@@ -66,19 +66,24 @@ Then add it to GitHub:
 - Name: `FLY_API_TOKEN`
 - Value: Your token
 
-### 2. GitHub Environments
-Configure two environments in your GitHub repository:
+### 2. (Optional) Enable Manual Approval for Production
 
-#### Staging Environment
-- Go to **Settings** → **Environments**
-- Create environment: `staging`
-- Add environment URL: `https://verigraph-api-staging.fly.dev`
+To require manual approval before production deployments:
 
-#### Production Environment
-- Create environment: `production`
-- Add environment URL: `https://verigraph-api.fly.dev`
-- **Enable "Required reviewers"** and add yourself or team members
-- This ensures manual approval before production deployments
+1. Go to **Settings** → **Environments**
+2. Click **New environment**
+3. Name: `production`
+4. Check **Required reviewers** and add yourself or team members
+5. Click **Save protection rules**
+
+Then update `.github/workflows/deploy-production.yml` and add this after line 12:
+```yaml
+    environment:
+      name: production
+      url: https://verigraph-api.fly.dev
+```
+
+Without this, production deployments will run automatically when you push to `main`.
 
 ## Development Workflow
 
