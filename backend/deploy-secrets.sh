@@ -60,6 +60,10 @@ push_secrets() {
 
 # Main script
 case "$1" in
+    dev|development)
+        echo -e "${GREEN}Deploying secrets to DEV...${NC}"
+        push_secrets ".env.dev" "verigraph-api-dev"
+        ;;
     staging)
         echo -e "${GREEN}Deploying secrets to STAGING...${NC}"
         push_secrets ".env.staging" "verigraph-api-staging"
@@ -70,17 +74,20 @@ case "$1" in
         ;;
     all)
         echo -e "${GREEN}Deploying secrets to ALL environments...${NC}"
+        push_secrets ".env.dev" "verigraph-api-dev"
+        echo ""
         push_secrets ".env.staging" "verigraph-api-staging"
         echo ""
         push_secrets ".env.prod" "verigraph-api"
         ;;
     *)
-        echo -e "${YELLOW}Usage: $0 [staging|prod|all]${NC}"
+        echo -e "${YELLOW}Usage: $0 [dev|staging|prod|all]${NC}"
         echo ""
         echo "Examples:"
+        echo "  $0 dev         - Push secrets to dev environment"
         echo "  $0 staging     - Push secrets to staging environment"
         echo "  $0 prod        - Push secrets to production environment"
-        echo "  $0 all         - Push secrets to both environments"
+        echo "  $0 all         - Push secrets to all environments"
         exit 1
         ;;
 esac

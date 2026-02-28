@@ -30,6 +30,9 @@ deploy_to_env() {
 
 # Main script
 case "$1" in
+    dev|development)
+        deploy_to_env "DEV" "verigraph-api-dev" "fly.dev.toml"
+        ;;
     staging)
         deploy_to_env "STAGING" "verigraph-api-staging" "fly.staging.toml"
         ;;
@@ -43,9 +46,10 @@ case "$1" in
         deploy_to_env "PRODUCTION" "verigraph-api" "fly.toml"
         ;;
     *)
-        echo -e "${YELLOW}Usage: $0 [staging|prod]${NC}"
+        echo -e "${YELLOW}Usage: $0 [dev|staging|prod]${NC}"
         echo ""
         echo "Examples:"
+        echo "  $0 dev         - Deploy to dev environment"
         echo "  $0 staging     - Deploy to staging environment"
         echo "  $0 prod        - Deploy to production environment"
         echo ""

@@ -49,6 +49,7 @@ dist-ssr/
 
 # Environment
 .env
+.env.dev
 .env.prod
 .env.staging
 .env.local

@@ -12,9 +12,6 @@ jobs:
   deploy:
     name: Deploy to Fly.io Staging
     runs-on: ubuntu-latest
-    environment:
-      name: staging
-      url: https://verigraph-api-staging.fly.dev
     defaults:
       run:
         working-directory: ./backend
