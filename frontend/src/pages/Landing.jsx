@@ -5,6 +5,7 @@ import Header from '../components/Header'
 function Landing() {
   const [searchQuery, setSearchQuery] = useState('')
   const [apiStatus, setApiStatus] = useState('')
+  const [apiConnected, setApiConnected] = useState(null)
   const [loading, setLoading] = useState(false)
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -23,15 +24,19 @@ function Landing() {
         body: JSON.stringify({ claim: searchQuery }),
       })
       
-      // Regardless of response, show "api connected"
-      setApiStatus('api connected')
-      
-      const data = await response.json()
-      console.log('API Response:', data)
+      if (response.ok) {
+        setApiStatus('api connected')
+        setApiConnected(true)
+        const data = await response.json()
+        console.log('API Response:', data)
+      } else {
+        setApiStatus('api disconnected')
+        setApiConnected(false)
+      }
     } catch (error) {
       console.error('API Error:', error)
-      // Still show "api connected" even on error
-      setApiStatus('api connected')
+      setApiStatus('api disconnected')
+      setApiConnected(false)
     } finally {
       setLoading(false)
     }
@@ -78,7 +83,7 @@ function Landing() {
           </p>
           {apiStatus && (
             <div className="mt-4 text-center">
-              <p className="text-green-600 font-semibold text-lg">
+              <p className={`font-semibold text-lg ${apiConnected ? 'text-green-600' : 'text-red-600'}`}>
                 {apiStatus}
               </p>
             </div>
