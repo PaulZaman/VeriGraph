@@ -3,12 +3,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import os
+from contextlib import asynccontextmanager
 from model_loader import get_model_loader
 
 # Load environment variables
 load_dotenv()
 
-app = FastAPI(title="VeriGraph API", version="1.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown events"""
+    # Startup: Initialize the model
+    loader = get_model_loader()
+    yield
+    # Shutdown: cleanup if needed
+
+app = FastAPI(title="VeriGraph API", version="1.0.0", lifespan=lifespan)
 
 # Get environment variables
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
@@ -30,10 +39,6 @@ app.add_middleware(
 class VerifyRequest(BaseModel):
     claim: str
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the model on startup"""
-    get_model_loader()
 
 @app.get("/")
 async def root():

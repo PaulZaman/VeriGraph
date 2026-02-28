@@ -13,3 +13,7 @@ torch==2.1.2
 # Fact-checking package
 factcheck @ git+https://github.com/MarcoSrhl/factcheck.git
 spacy>=3.5.0
+
+# Testing
+pytest==8.0.0
+httpx==0.26.0

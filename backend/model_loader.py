@@ -20,12 +20,20 @@ class ModelLoader:
         self.model_name = os.getenv("MODEL_NAME", "fact-checker-bert")
         self.model_stage = os.getenv("MODEL_STAGE", "Staging")  # Staging or Production
         self.cache_dir = os.path.join(os.getcwd(), ".model_cache")
+        self.test_mode = os.getenv("TEST_MODE", "false").lower() == "true"
         
         # Log configuration
-        logger.info(f"Model configuration: {self.model_name} @ {self.model_stage}")
+        if not self.test_mode:
+            logger.info(f"Model configuration: {self.model_name} @ {self.model_stage}")
         
     def initialize(self):
         """Initialize and download the model from MLflow"""
+        # Skip initialization in test mode
+        if self.test_mode:
+            logger.info("Test mode: skipping model initialization")
+            self.model_loaded = False
+            return
+            
         try:
             logger.info(f"Connecting to DagHub repo: {self.dagshub_repo}")
             
