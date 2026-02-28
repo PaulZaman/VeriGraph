@@ -10,14 +10,28 @@ python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-2. Install dependencies:
+2. Install dependencies and setup:
 ```bash
+# Quick setup (recommended)
+chmod +x setup.sh
+./setup.sh
+
+# Or manually:
 pip install -r requirements.txt
+python -m spacy download en_core_web_sm
 ```
 
 3. Create .env file:
 ```bash
 cp .env.example .env
+```
+
+4. Ensure a model is in Staging (required for predictions):
+```bash
+# Run this script to promote version 1 to Staging
+python promote_v1_to_staging.py
+
+# Or ask your friend (repo owner) to promote it in DagHub UI
 ```
 
 ## Running the Server

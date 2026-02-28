@@ -9,3 +9,7 @@ requests==2.31.0
 mlflow==2.10.2
 transformers==4.36.2
 torch==2.1.2
+
+# Fact-checking package
+factcheck @ git+https://github.com/MarcoSrhl/factcheck.git
+spacy>=3.5.0

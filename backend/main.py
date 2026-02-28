@@ -52,8 +52,9 @@ async def verify_claim(request: VerifyRequest):
     return {
         "status": "success",
         "claim": request.claim,
-        "result": prediction.get("result", "UNKNOWN"),
+        "verdict": prediction.get("label", "UNKNOWN"),
         "confidence": prediction.get("confidence", 0.0),
+        "probabilities": prediction.get("probabilities", {}),
         "mode": prediction.get("mode", "unknown"),
         "message": "Claim processed successfully"
     }
