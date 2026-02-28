@@ -46,6 +46,12 @@ docker run -p 8000:8080 verigraph-backend
 
 ## Deployment to Fly.io
 
+We have two environments configured:
+- **Staging**: `verigraph-api-staging` (fly.staging.toml)
+- **Production**: `verigraph-api` (fly.toml)
+
+### Initial Setup
+
 1. Install Fly CLI:
 ```bash
 curl -L https://fly.io/install.sh | sh
@@ -56,39 +62,95 @@ curl -L https://fly.io/install.sh | sh
 fly auth login
 ```
 
-3. Update `.env.prod` with your production frontend URL
-
-4. Create and deploy the app:
+3. Create the apps (one-time setup):
 ```bash
-fly launch  # Follow prompts, it will use fly.toml
+# Create staging app
+fly apps create verigraph-api-staging
+
+# Create production app
+fly apps create verigraph-api
+```
+
+### Configure Environment Variables
+
+1. Update your environment files:
+   - `.env.staging` - Staging environment variables
+   - `.env.prod` - Production environment variables
+
+2. Push secrets to Fly.io using the automated script:
+```bash
+# Push secrets to staging
+./deploy-secrets.sh staging
+
+# Push secrets to production
+./deploy-secrets.sh prod
+
+# Push secrets to both environments
+./deploy-secrets.sh all
+```
+
+Or manually set secrets:
+```bash
+fly secrets set FRONTEND_URL=https://your-frontend.com --app verigraph-api-staging
+```
+
+### Deploy
+
+Use the deployment script:
+
+```bash
+# Deploy to staging
+./deploy.sh staging
+
+# Deploy to production (with confirmation prompt)
+./deploy.sh prod
 ```
 
 Or deploy manually:
+
 ```bash
-fly deploy
+# Deploy to staging
+fly deploy --config fly.staging.toml --app verigraph-api-staging
+
+# Deploy to production
+fly deploy --config fly.toml --app verigraph-api
 ```
 
-5. Set environment secrets:
+### Monitor and Manage
+
 ```bash
-fly secrets set FRONTEND_URL=https://your-frontend-domain.com
+# Check app status
+fly status --app verigraph-api-staging
+fly status --app verigraph-api
+
+# View logs
+fly logs --app verigraph-api-staging
+fly logs --app verigraph-api
+
+# Open app in browser
+fly open --app verigraph-api-staging
+fly open --app verigraph-api
+
+# SSH into the machine
+fly ssh console --app verigraph-api-staging
+
+# View secrets (names only, not values)
+fly secrets list --app verigraph-api-staging
 ```
 
-6. Check status and logs:
-```bash
-fly status
-fly logs
-```
+### Deployment Workflow
 
-7. Open your deployed app:
-```bash
-fly open
-```
+1. Make changes to your code
+2. Test locally
+3. Deploy to staging: `./deploy.sh staging`
+4. Test on staging
+5. If all good, deploy to production: `./deploy.sh prod`
 
 ## Environment Variables
 
 - `PORT`: Server port (default: 8000 local, 8080 production)
 - `HOST`: Host address (default: 0.0.0.0)
-- `ENVIRONMENT`: development or production
+- `ENVIRONMENT`: development, staging, or production
 - `FRONTEND_URL`: Frontend URL for CORS
 - `DEBUG`: Debug mode (true/false)
 
