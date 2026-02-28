@@ -73,6 +73,71 @@ class ModelLoader:
             if not run_id:
                 raise Exception(f"No staging model found for '{self.model_name}'. Please register and promote a model to Staging.")
             
+            # Try loading directly with MLflow's pyfunc loader (handles auth better)
+            logger.info(f"🔄 Attempting to load model with MLflow pyfunc...")
+            
+            try:
+                # Use MLflow model URI format
+                model_uri = f"models:/{self.model_name}/Staging"
+                logger.info(f"Loading from: {model_uri}")
+                
+                # Load with MLflow (this handles auth and downloads automatically)
+                import mlflow.pyfunc
+                mlflow_model = mlflow.pyfunc.load_model(model_uri)
+                
+                logger.info("✅ Model loaded successfully with MLflow pyfunc!")
+                
+                # Wrap the MLflow model to match our interface
+                class MLflowModelWrapper:
+                    def __init__(self, mlflow_model):
+                        self.mlflow_model = mlflow_model
+                    
+                    def predict(self, claim, evidence=""):
+                        # MLflow transformers models expect pandas DataFrame
+                        import pandas as pd
+                        
+                        # Create input in expected format
+                        if evidence:
+                            input_data = pd.DataFrame([{"text": f"{claim} [SEP] {evidence}"}])
+                        else:
+                            input_data = pd.DataFrame([{"text": claim}])
+                        
+                        # Get prediction
+                        result = self.mlflow_model.predict(input_data)
+                        
+                        # Parse result (format depends on how model was logged)
+                        if isinstance(result, dict):
+                            return result
+                        else:
+                            # Handle raw predictions
+                            import numpy as np
+                            if hasattr(result, 'shape'):
+                                probs = result[0] if len(result.shape) > 1 else result
+                                label_id = int(np.argmax(probs))
+                                label_map = {0: "SUPPORTED", 1: "REFUTED", 2: "NOT ENOUGH INFO"}
+                                
+                                return {
+                                    "label": label_map.get(label_id, "UNKNOWN"),
+                                    "confidence": float(np.max(probs)),
+                                    "probabilities": {
+                                        "SUPPORTED": float(probs[0]),
+                                        "REFUTED": float(probs[1]),
+                                        "NOT ENOUGH INFO": float(probs[2])
+                                    }
+                                }
+                            else:
+                                return {"label": str(result), "confidence": 1.0}
+                
+                self.checker = MLflowModelWrapper(mlflow_model)
+                self.model_loaded = True
+                logger.info("✅ Model loaded and wrapped successfully!")
+                return
+                
+            except Exception as mlflow_error:
+                logger.warning(f"MLflow pyfunc loading failed: {mlflow_error}")
+                logger.info("Falling back to manual artifact download...")
+            
+            # Fallback: Manual download approach
             # Setup cache directory and download model
             model_cache_path = os.path.join(self.cache_dir, run_id)
             
