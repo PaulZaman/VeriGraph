@@ -25,6 +25,18 @@ class ModelLoader:
         try:
             logger.info(f"Connecting to DagHub repo: {self.dagshub_repo}")
             
+            # Set up DagHub authentication if credentials are provided
+            dagshub_user = os.getenv("DAGSHUB_USER")
+            dagshub_token = os.getenv("DAGSHUB_TOKEN")
+            
+            if dagshub_user and dagshub_token:
+                logger.info("✓ Using DagHub authentication")
+                os.environ['MLFLOW_TRACKING_USERNAME'] = dagshub_user
+                os.environ['MLFLOW_TRACKING_PASSWORD'] = dagshub_token
+            else:
+                logger.warning("⚠️  No DagHub credentials found. Artifact downloads may fail for private repos.")
+                logger.info("Set DAGSHUB_USER and DAGSHUB_TOKEN in .env file")
+            
             # Set MLflow tracking URI to DagHub
             mlflow.set_tracking_uri(f"https://dagshub.com/{self.dagshub_repo}.mlflow")
             
@@ -103,7 +115,11 @@ class ModelLoader:
             logger.info(f"🔄 Loading model with factcheck package...")
             
             try:
-                from factcheck import FactClassifier
+                # The package is installed as 'src', not 'factcheck' due to packaging issue
+                try:
+                    from factcheck import FactClassifier
+                except ImportError:
+                    from src.model import FactClassifier
                 
                 # For MLflow transformers format, the factcheck package needs the model directory
                 # Try loading with the model path
@@ -112,8 +128,8 @@ class ModelLoader:
                 logger.info("✅ Model loaded successfully with factcheck package!")
                 logger.info(f"📍 Model cached at: {model_cache_path}")
                 
-            except ImportError:
-                logger.error("factcheck package not installed!")
+            except ImportError as e:
+                logger.error(f"factcheck package not installed or import failed: {e}")
                 logger.info("Install with: pip install git+https://github.com/MarcoSrhl/factcheck.git")
                 logger.info("Also run: python -m spacy download en_core_web_sm")
                 raise
