@@ -7,6 +7,7 @@ function Landing() {
   const [apiStatus, setApiStatus] = useState('')
   const [apiConnected, setApiConnected] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [response, setResponse] = useState(null)
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -14,6 +15,7 @@ function Landing() {
     e.preventDefault()
     setLoading(true)
     setApiStatus('')
+    setResponse(null)
     
     try {
       const response = await fetch(`${API_URL}/verify`, {
@@ -28,15 +30,18 @@ function Landing() {
         setApiStatus('api connected')
         setApiConnected(true)
         const data = await response.json()
+        setResponse(data)
         console.log('API Response:', data)
       } else {
         setApiStatus('api disconnected')
         setApiConnected(false)
+        setResponse(null)
       }
     } catch (error) {
       console.error('API Error:', error)
       setApiStatus('api disconnected')
       setApiConnected(false)
+      setResponse(null)
     } finally {
       setLoading(false)
     }
@@ -86,6 +91,13 @@ function Landing() {
               <p className={`font-semibold text-lg ${apiConnected ? 'text-green-600' : 'text-red-600'}`}>
                 {apiStatus}
               </p>
+            </div>
+          )}
+          {response && (
+            <div className="mt-6 bg-gray-900 rounded-lg p-6 text-left overflow-x-auto">
+              <pre className="text-green-400 text-sm font-mono">
+                {JSON.stringify(response, null, 2)}
+              </pre>
             </div>
           )}
         </div>

@@ -4,3 +4,16 @@ python-multipart==0.0.12
 pydantic==2.9.2
 python-dotenv==1.0.1
 requests==2.31.0
+
+# ML/Model dependencies
+mlflow==2.10.2
+transformers==4.36.2
+torch==2.1.2
+
+# Fact-checking package
+factcheck @ git+https://github.com/MarcoSrhl/factcheck.git
+spacy>=3.5.0
+
+# Testing
+pytest==8.0.0
+httpx==0.26.0

@@ -20,6 +20,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install MLflow
+        run: pip install mlflow
+
+      - name: Promote Model to Production
+        working-directory: ./backend
+        run: python scripts/promote_model_to_production.py
+        env:
+          DAGSHUB_USER: ${{ secrets.DAGSHUB_USER }}
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+          MODEL_NAME: fact-checker-bert
+          DAGSHUB_REPO: MarcoSrhl/NLP-Fact-checking
+
       - name: Set up Fly CLI
         uses: superfly/flyctl-actions/setup-flyctl@master
 
