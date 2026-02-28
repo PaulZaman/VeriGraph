@@ -63,17 +63,41 @@ class ModelLoader:
             
             # Setup cache directory and download model
             model_cache_path = os.path.join(self.cache_dir, run_id)
-            model_path = os.path.join(model_cache_path, "model")
             
-            # Check if model is already cached
-            if os.path.exists(model_path) and os.path.exists(os.path.join(model_path, "config.json")):
-                logger.info(f"✨ Using cached model from: {model_path}")
+            # For MLflow transformers models, we need to download the entire artifact
+            # (which includes components/model/ and components/tokenizer/)
+            # Check if already cached
+            expected_paths = [
+                os.path.join(model_cache_path, "components", "model"),
+                os.path.join(model_cache_path, "components", "tokenizer")
+            ]
+            
+            if all(os.path.exists(p) for p in expected_paths):
+                logger.info(f"✨ Using cached model from: {model_cache_path}")
+                model_path = os.path.join(model_cache_path, "components", "model")
+                tokenizer_path = os.path.join(model_cache_path, "components", "tokenizer")
             else:
-                # Download the model artifacts
+                # Download the entire artifact root (includes both model and tokenizer)
                 logger.info(f"📥 Downloading model artifacts from run {run_id[:8]}... (this may take 30-60 seconds)")
                 os.makedirs(model_cache_path, exist_ok=True)
-                model_path = client.download_artifacts(run_id, "model", model_cache_path)
+                
+                # Download root level artifacts (gets everything)
+                downloaded_path = client.download_artifacts(run_id, "", model_cache_path)
                 logger.info("✅ Model downloaded successfully")
+                
+                # Check if it's in MLflow transformers format (components/model and components/tokenizer)
+                components_model = os.path.join(downloaded_path, "components", "model")
+                components_tokenizer = os.path.join(downloaded_path, "components", "tokenizer")
+                
+                if os.path.exists(components_model) and os.path.exists(components_tokenizer):
+                    model_path = components_model
+                    tokenizer_path = components_tokenizer
+                    logger.info("✓ Detected MLflow transformers format (components/)")
+                else:
+                    # Fallback: look for model directly
+                    model_path = os.path.join(downloaded_path, "model")
+                    tokenizer_path = model_path  # Assume tokenizer is in same folder
+                    logger.info("✓ Using standard model format")
             
             # Load using the factcheck package
             logger.info(f"🔄 Loading model with factcheck package...")
@@ -81,10 +105,12 @@ class ModelLoader:
             try:
                 from factcheck import FactClassifier
                 
+                # For MLflow transformers format, the factcheck package needs the model directory
+                # Try loading with the model path
                 self.checker = FactClassifier(model_path=model_path)
                 self.model_loaded = True
                 logger.info("✅ Model loaded successfully with factcheck package!")
-                logger.info(f"📍 Model cached at: {model_path}")
+                logger.info(f"📍 Model cached at: {model_cache_path}")
                 
             except ImportError:
                 logger.error("factcheck package not installed!")
