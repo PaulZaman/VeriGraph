@@ -33,6 +33,7 @@ function Header() {
           <nav className="hidden md:flex space-x-6">
             <Link to="/how-it-works" className="text-gray-600 hover:text-gray-900">How It Works</Link>
             <Link to="/about" className="text-gray-600 hover:text-gray-900">About</Link>
+            <Link to="/data" className="text-gray-600 hover:text-gray-900">Data</Link>
           </nav>
         </div>
       </div>

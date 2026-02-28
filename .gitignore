@@ -71,3 +71,11 @@ coverage/
 .cache/
 .temp/
 temp/
+.model_cache/
+
+# Sensitive files
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!jsconfig.json

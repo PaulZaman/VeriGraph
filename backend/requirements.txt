@@ -4,3 +4,10 @@ python-multipart==0.0.12
 pydantic==2.9.2
 python-dotenv==1.0.1
 requests==2.31.0
+
+# Data Management
+dvc[gs]==3.48.0
+google-cloud-storage==2.14.0
+
+# RDF Parsing
+rdflib==7.0.0
