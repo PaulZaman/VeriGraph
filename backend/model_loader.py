@@ -37,54 +37,35 @@ class ModelLoader:
             from mlflow.tracking import MlflowClient
             client = MlflowClient()
             
-            # Try to load from registered model first
-            logger.info(f"Attempting to load model: {self.model_name} version {self.model_version}")
+            # Get all versions in Staging stage
+            logger.info(f"Looking for {self.model_name} models in Staging...")
             
-            # Get the run ID from the registered model
             run_id = None
+            model_version_num = None
+            
             try:
-                if self.model_version == "latest":
-                    versions = client.search_model_versions(f"name='{self.model_name}'")
-                    if versions:
-                        run_id = versions[0].run_id
-                        logger.info(f"Found registered model, using run: {run_id[:8]}...")
-                else:
-                    version = client.get_model_version(self.model_name, self.model_version)
-                    run_id = version.run_id
-                    logger.info(f"Found model version {self.model_version}, using run: {run_id[:8]}...")
+                versions = client.search_model_versions(f"name='{self.model_name}'")
+                staging_versions = [v for v in versions if v.current_stage == "Staging"]
+                
+                if len(staging_versions) == 0:
+                    raise Exception(f"No models in Staging stage for '{self.model_name}'. Please promote a model to Staging first.")
+                elif len(staging_versions) > 1:
+                    version_nums = [v.version for v in staging_versions]
+                    raise Exception(f"Multiple models in Staging stage: versions {version_nums}. Please move one to Production or Archive.")
+                
+                # Exactly one staging model found
+                staging_version = staging_versions[0]
+                run_id = staging_version.run_id
+                model_version_num = staging_version.version
+                logger.info(f"✓ Found staging model v{model_version_num}, using run: {run_id[:8]}...")
+                
             except Exception as e:
+                if "No models in Staging" in str(e) or "Multiple models" in str(e):
+                    raise  # Re-raise these specific errors
                 logger.warning(f"Could not find in registry: {str(e)}")
             
-            # If no run_id from registry, try to find from recent runs
             if not run_id:
-                logger.info("Searching for models in recent runs...")
-                experiments = client.search_experiments()
-                
-                for exp in experiments:
-                    if exp.lifecycle_stage == "active":
-                        runs = client.search_runs(
-                            experiment_ids=[exp.experiment_id],
-                            order_by=["start_time DESC"],
-                            max_results=10
-                        )
-                        
-                        for run in runs:
-                            try:
-                                artifacts = client.list_artifacts(run.info.run_id)
-                                for artifact in artifacts:
-                                    if "model" in artifact.path:
-                                        run_id = run.info.run_id
-                                        logger.info(f"Found model in run: {run_id[:8]}...")
-                                        break
-                                if run_id:
-                                    break
-                            except Exception:
-                                continue
-                        if run_id:
-                            break
-            
-            if not run_id:
-                raise Exception("No model runs found")
+                raise Exception(f"No staging model found for '{self.model_name}'. Please register and promote a model to Staging.")
             
             # Setup cache directory
             cache_dir = os.path.join(os.getcwd(), ".model_cache", run_id)
