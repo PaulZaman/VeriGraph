@@ -1,0 +1,49 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-production.yml'
+
+jobs:
+  deploy:
+    name: Deploy to Fly.io Production
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://verigraph-api.fly.dev
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly.io Production
+        run: flyctl deploy --config fly.toml --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Wait for deployment
+        run: sleep 15
+
+      - name: Verify deployment
+        run: |
+          curl -f https://verigraph-api.fly.dev/health || exit 1
+          echo "✅ Production health check passed"
+
+      - name: Create deployment summary
+        run: |
+          echo "### 🚀 Production Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment:** Production" >> $GITHUB_STEP_SUMMARY
+          echo "- **App:** verigraph-api" >> $GITHUB_STEP_SUMMARY
+          echo "- **URL:** https://verigraph-api.fly.dev" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** ✅ Deployed Successfully" >> $GITHUB_STEP_SUMMARY
