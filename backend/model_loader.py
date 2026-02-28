@@ -18,10 +18,14 @@ class ModelLoader:
         self.model_loaded = False
         self.dagshub_repo = os.getenv("DAGSHUB_REPO", "MarcoSrhl/NLP-Fact-checking")
         self.model_name = os.getenv("MODEL_NAME", "fact-checker-bert")
+        self.model_stage = os.getenv("MODEL_STAGE", "Staging")  # Staging or Production
         self.cache_dir = os.path.join(os.getcwd(), ".model_cache")
         
+        # Log configuration
+        logger.info(f"Model configuration: {self.model_name} @ {self.model_stage}")
+        
     def initialize(self):
-        """Initialize and download the model from MLflow staging"""
+        """Initialize and download the model from MLflow"""
         try:
             logger.info(f"Connecting to DagHub repo: {self.dagshub_repo}")
             
@@ -43,99 +47,152 @@ class ModelLoader:
             from mlflow.tracking import MlflowClient
             client = MlflowClient()
             
-            # Get all versions in Staging stage
-            logger.info(f"Looking for {self.model_name} models in Staging...")
+            # Get all versions in the configured stage
+            logger.info(f"Looking for {self.model_name} models in {self.model_stage}...")
             
             run_id = None
             model_version_num = None
             
             try:
                 versions = client.search_model_versions(f"name='{self.model_name}'")
-                staging_versions = [v for v in versions if v.current_stage == "Staging"]
+                stage_versions = [v for v in versions if v.current_stage == self.model_stage]
                 
-                if len(staging_versions) == 0:
-                    raise Exception(f"No models in Staging stage for '{self.model_name}'. Please promote a model to Staging first.")
-                elif len(staging_versions) > 1:
-                    version_nums = [v.version for v in staging_versions]
-                    raise Exception(f"Multiple models in Staging stage: versions {version_nums}. Please move one to Production or Archive.")
+                if len(stage_versions) == 0:
+                    raise Exception(f"No models in {self.model_stage} stage for '{self.model_name}'. Please promote a model to {self.model_stage} first.")
+                elif len(stage_versions) > 1:
+                    version_nums = [v.version for v in stage_versions]
+                    raise Exception(f"Multiple models in {self.model_stage} stage: versions {version_nums}. Please move one to a different stage.")
                 
-                # Exactly one staging model found
-                staging_version = staging_versions[0]
-                run_id = staging_version.run_id
-                model_version_num = staging_version.version
-                logger.info(f"✓ Found staging model v{model_version_num}, using run: {run_id[:8]}...")
+                # Exactly one model found in the stage
+                stage_version = stage_versions[0]
+                run_id = stage_version.run_id
+                model_version_num = stage_version.version
+                logger.info(f"✓ Found {self.model_stage} model v{model_version_num}, using run: {run_id[:8]}...")
                 
             except Exception as e:
-                if "No models in Staging" in str(e) or "Multiple models" in str(e):
+                if f"No models in {self.model_stage}" in str(e) or "Multiple models" in str(e):
                     raise  # Re-raise these specific errors
                 logger.warning(f"Could not find in registry: {str(e)}")
             
             if not run_id:
-                raise Exception(f"No staging model found for '{self.model_name}'. Please register and promote a model to Staging.")
+                raise Exception(f"No {self.model_stage} model found for '{self.model_name}'. Please register and promote a model to {self.model_stage}.")
             
-            # Try loading directly with MLflow's pyfunc loader (handles auth better)
-            logger.info(f"🔄 Attempting to load model with MLflow pyfunc...")
+            # Download model artifacts from MLflow (handles auth) and load manually with transformers
+            logger.info(f"🔄 Downloading model artifacts from DagHub MLflow...")
             
             try:
-                # Use MLflow model URI format
-                model_uri = f"models:/{self.model_name}/Staging"
-                logger.info(f"Loading from: {model_uri}")
+                from transformers import AutoModelForSequenceClassification, AutoTokenizer
+                import torch
                 
-                # Load with MLflow (this handles auth and downloads automatically)
-                import mlflow.pyfunc
-                mlflow_model = mlflow.pyfunc.load_model(model_uri)
+                # Use MLflow model URI format with configured stage
+                model_uri = f"models:/{self.model_name}/{self.model_stage}"
+                logger.info(f"Downloading from: {model_uri}")
                 
-                logger.info("✅ Model loaded successfully with MLflow pyfunc!")
+                # Download model artifacts (MLflow handles auth with env vars)
+                model_path = mlflow.artifacts.download_artifacts(model_uri)
+                logger.info(f"✅ Artifacts downloaded to: {model_path}")
                 
-                # Wrap the MLflow model to match our interface
-                class MLflowModelWrapper:
-                    def __init__(self, mlflow_model):
-                        self.mlflow_model = mlflow_model
+                # Check various possible structures
+                # MLflow transformers format can use components/ subdirectory
+                # or just model/ subdirectory, or flat structure
+                model_dir = None
+                tokenizer_dir = None
+                
+                # Try components/model (MLflow transformers format)
+                if os.path.exists(os.path.join(model_path, "components", "model")):
+                    model_dir = os.path.join(model_path, "components", "model")
+                    tokenizer_dir = os.path.join(model_path, "components", "tokenizer")
+                # Try model/ subdirectory
+                elif os.path.exists(os.path.join(model_path, "model")):
+                    model_dir = os.path.join(model_path, "model")
+                    tokenizer_dir = os.path.join(model_path, "model")
+                # Try flat structure
+                elif os.path.exists(os.path.join(model_path, "config.json")):
+                    model_dir = model_path
+                    tokenizer_dir = model_path
+                else:
+                    # Check if directory is empty or has any files
+                    files = os.listdir(model_path) if os.path.exists(model_path) else []
+                    raise ValueError(f"Downloaded artifacts directory is empty or has unexpected structure: {model_path}, files: {files}")
+                
+                logger.info(f"Loading model from: {model_dir}")
+                logger.info(f"Loading tokenizer from: {tokenizer_dir}")
+                
+                # Load model and tokenizer manually
+                model = AutoModelForSequenceClassification.from_pretrained(model_dir)
+                tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
+                
+                # Log model details
+                num_params = sum(p.numel() for p in model.parameters())
+                logger.info("✅ Model and tokenizer loaded successfully!")
+                logger.info(f"📊 Model Architecture: {model.config.model_type.upper() if hasattr(model.config, 'model_type') else 'Unknown'}")
+                logger.info(f"📊 Total Parameters: {num_params:,}")
+                logger.info(f"📊 Model Name: {self.model_name}")
+                logger.info(f"📊 Stage: {self.model_stage}")
+                
+                # Create wrapper for predictions
+                class TransformersModelWrapper:
+                    def __init__(self, model, tokenizer, model_name):
+                        self.model = model
+                        self.tokenizer = tokenizer
+                        self.model_name = model_name
+                        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+                        self.model.to(self.device)
+                        self.model.eval()
+                        
+                        # Label mapping for fact-checking models
+                        self.label_map = {0: "SUPPORTED", 1: "REFUTED", 2: "NOT ENOUGH INFO"}
+                        
+                        logger.info(f"🎯 Model loaded on device: {self.device.upper()}")
+                        logger.info(f"🏷️  Labels: {list(self.label_map.values())}")
                     
                     def predict(self, claim, evidence=""):
-                        # MLflow transformers models expect pandas DataFrame
-                        import pandas as pd
-                        
-                        # Create input in expected format
+                        # Prepare input text
                         if evidence:
-                            input_data = pd.DataFrame([{"text": f"{claim} [SEP] {evidence}"}])
+                            text = f"{claim} [SEP] {evidence}"
                         else:
-                            input_data = pd.DataFrame([{"text": claim}])
+                            text = claim
+                        
+                        # Tokenize
+                        inputs = self.tokenizer(
+                            text,
+                            return_tensors="pt",
+                            truncation=True,
+                            max_length=512,
+                            padding=True
+                        ).to(self.device)
                         
                         # Get prediction
-                        result = self.mlflow_model.predict(input_data)
+                        with torch.no_grad():
+                            outputs = self.model(**inputs)
+                            logits = outputs.logits
+                            probs = torch.nn.functional.softmax(logits, dim=-1)[0]
                         
-                        # Parse result (format depends on how model was logged)
-                        if isinstance(result, dict):
-                            return result
-                        else:
-                            # Handle raw predictions
-                            import numpy as np
-                            if hasattr(result, 'shape'):
-                                probs = result[0] if len(result.shape) > 1 else result
-                                label_id = int(np.argmax(probs))
-                                label_map = {0: "SUPPORTED", 1: "REFUTED", 2: "NOT ENOUGH INFO"}
-                                
-                                return {
-                                    "label": label_map.get(label_id, "UNKNOWN"),
-                                    "confidence": float(np.max(probs)),
-                                    "probabilities": {
-                                        "SUPPORTED": float(probs[0]),
-                                        "REFUTED": float(probs[1]),
-                                        "NOT ENOUGH INFO": float(probs[2])
-                                    }
-                                }
-                            else:
-                                return {"label": str(result), "confidence": 1.0}
+                        # Convert to numpy for easier handling
+                        probs_np = probs.cpu().numpy()
+                        label_id = int(probs_np.argmax())
+                        
+                        return {
+                            "label": self.label_map.get(label_id, "UNKNOWN"),
+                            "confidence": float(probs_np[label_id]),
+                            "probabilities": {
+                                "SUPPORTED": float(probs_np[0]),
+                                "REFUTED": float(probs_np[1]),
+                                "NOT ENOUGH INFO": float(probs_np[2])
+                            }
+                        }
                 
-                self.checker = MLflowModelWrapper(mlflow_model)
+                self.checker = TransformersModelWrapper(model, tokenizer, self.model_name)
                 self.model_loaded = True
-                logger.info("✅ Model loaded and wrapped successfully!")
+                logger.info("✅ Model wrapper created successfully!")
+                logger.info("="*60)
+                logger.info(f"🚀 {self.model_name} is ready for predictions!")
+                logger.info("="*60)
                 return
                 
-            except Exception as mlflow_error:
-                logger.warning(f"MLflow pyfunc loading failed: {mlflow_error}")
-                logger.info("Falling back to manual artifact download...")
+            except Exception as download_error:
+                logger.warning(f"Manual transformers loading failed: {download_error}")
+                logger.info("Falling back to factcheck package...")
             
             # Fallback: Manual download approach
             # Setup cache directory and download model
@@ -226,11 +283,13 @@ class ModelLoader:
             }
         
         try:
-            # Use the factcheck package's predict method
+            # Use the model's predict method
+            logger.info(f"🔮 Making prediction with {self.model_name} ({self.model_stage})")
             result = self.checker.predict(claim=claim, evidence=evidence)
             
             # Add mode indicator
             result["mode"] = "live"
+            logger.info(f"✅ Prediction complete: {result['label']} (confidence: {result['confidence']:.2%})")
             
             return result
             

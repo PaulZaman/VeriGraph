@@ -29,7 +29,7 @@ cp .env.example .env
 4. Ensure a model is in Staging (required for predictions):
 ```bash
 # Run this script to promote version 1 to Staging
-python promote_v1_to_staging.py
+python scripts/promote_v1_to_staging.py
 
 # Or ask your friend (repo owner) to promote it in DagHub UI
 ```
@@ -175,7 +175,12 @@ fly secrets list --app verigraph-api-staging
 
 ## Model Integration
 
-VeriGraph uses ML models hosted on DagHub for fact-checking predictions. See [MODEL_INTEGRATION.md](MODEL_INTEGRATION.md) for detailed documentation.
+VeriGraph uses ML models hosted on DagHub for fact-checking predictions. 
+
+**Documentation:**
+- [docs/MODEL_INTEGRATION.md](docs/MODEL_INTEGRATION.md) - Technical details on model loading
+- [docs/PRODUCTION_WORKFLOW.md](docs/PRODUCTION_WORKFLOW.md) - Model promotion and deployment process
+- [docs/DAGSHUB_AUTH.md](docs/DAGSHUB_AUTH.md) - Setting up DagHub authentication
 
 ### Quick Start
 
@@ -184,10 +189,17 @@ VeriGraph uses ML models hosted on DagHub for fact-checking predictions. See [MO
 ```bash
 DAGSHUB_REPO=MarcoSrhl/NLP-Fact-checking
 MODEL_NAME=fact-checker-bert
-MODEL_VERSION=1
+MODEL_STAGE=Staging  # Use Production for production environment
 ```
 
 3. The API will run in mock mode if the model fails to load (network issues, etc.)
+
+### Model Stages
+
+- **Staging**: Used for testing and local development
+- **Production**: Automatically promoted when code is pushed to `main` branch
+
+When you push to `main`, the Staging model is automatically promoted to Production and deployed to Fly.io. See [docs/PRODUCTION_WORKFLOW.md](docs/PRODUCTION_WORKFLOW.md) for details.
 
 ### DagHub Repository
 

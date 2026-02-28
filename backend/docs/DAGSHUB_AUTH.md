@@ -44,16 +44,16 @@ DAGSHUB_TOKEN=your_token_here
 2. Set secrets in Fly.io:
 ```bash
 # Make script executable
-chmod +x backend/set-dagshub-secrets.sh
+chmod +x backend/deploy-secrets.sh
 
-# Set for staging
-./backend/set-dagshub-secrets.sh staging
+# Deploy all secrets (including DagHub credentials) to staging
+./backend/deploy-secrets.sh staging
 
-# Set for production
-./backend/set-dagshub-secrets.sh prod
+# Deploy all secrets to production
+./backend/deploy-secrets.sh prod
 
 # Or both at once
-./backend/set-dagshub-secrets.sh all
+./backend/deploy-secrets.sh all
 ```
 
 3. Deploy:
