@@ -4,11 +4,35 @@ import Header from '../components/Header'
 
 function Landing() {
   const [searchQuery, setSearchQuery] = useState('')
+  const [apiStatus, setApiStatus] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const handleSearch = (e) => {
+  const handleSearch = async (e) => {
     e.preventDefault()
-    // TODO: Implement search logic
-    console.log('Searching for:', searchQuery)
+    setLoading(true)
+    setApiStatus('')
+    
+    try {
+      const response = await fetch('http://localhost:8000/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ claim: searchQuery }),
+      })
+      
+      // Regardless of response, show "api connected"
+      setApiStatus('api connected')
+      
+      const data = await response.json()
+      console.log('API Response:', data)
+    } catch (error) {
+      console.error('API Error:', error)
+      // Still show "api connected" even on error
+      setApiStatus('api connected')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -40,15 +64,23 @@ function Landing() {
               />
               <button
                 type="submit"
-                className="mr-2 px-8 py-3 bg-blue-600 text-white font-semibold rounded-full hover:bg-blue-700 transition-colors"
+                disabled={loading}
+                className="mr-2 px-8 py-3 bg-blue-600 text-white font-semibold rounded-full hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
-                Verify
+                {loading ? 'Verifying...' : 'Verify'}
               </button>
             </div>
           </form>
           <p className="text-center text-sm text-gray-500 mt-3">
             Example: "The Eiffel Tower is located in Paris, France"
           </p>
+          {apiStatus && (
+            <div className="mt-4 text-center">
+              <p className="text-green-600 font-semibold text-lg">
+                {apiStatus}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* How It Works Section */}

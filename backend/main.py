@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 app = FastAPI(title="VeriGraph API", version="1.0.0")
 
@@ -12,6 +13,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class VerifyRequest(BaseModel):
+    claim: str
+
 @app.get("/")
 async def root():
     return {"message": "Welcome to VeriGraph API"}
@@ -19,3 +23,14 @@ async def root():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+@app.post("/verify")
+async def verify_claim(request: VerifyRequest):
+    # TODO: Implement actual verification logic
+    return {
+        "status": "success",
+        "claim": request.claim,
+        "result": "SUPPORTED",
+        "confidence": 0.85,
+        "message": "Claim received and processed"
+    }
