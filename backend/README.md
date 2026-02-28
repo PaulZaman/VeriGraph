@@ -153,4 +153,30 @@ fly secrets list --app verigraph-api-staging
 - `ENVIRONMENT`: development, staging, or production
 - `FRONTEND_URL`: Frontend URL for CORS
 - `DEBUG`: Debug mode (true/false)
+- `DAGSHUB_REPO`: DagHub repository (e.g., MarcoSrhl/NLP-Fact-checking)
+- `MODEL_NAME`: Name of the MLflow model
+- `MODEL_VERSION`: Model version to use (latest, production, or version number)
+- `DAGSHUB_USER`: (Optional) DagHub username for private repos
+- `DAGSHUB_TOKEN`: (Optional) DagHub access token for private repos
+
+## Model Integration
+
+VeriGraph uses ML models hosted on DagHub for fact-checking predictions. See [MODEL_INTEGRATION.md](MODEL_INTEGRATION.md) for detailed documentation.
+
+### Quick Start
+
+1. Models are automatically loaded from DagHub on startup
+2. Configure the model in your `.env` file:
+```bash
+DAGSHUB_REPO=MarcoSrhl/NLP-Fact-checking
+MODEL_NAME=fact-checker-bert
+MODEL_VERSION=1
+```
+
+3. The API will run in mock mode if the model fails to load (network issues, etc.)
+
+### DagHub Repository
+
+- Repository: https://dagshub.com/MarcoSrhl/NLP-Fact-checking
+- Experiments: https://dagshub.com/MarcoSrhl/NLP-Fact-checking/experiments
 

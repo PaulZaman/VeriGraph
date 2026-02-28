@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import os
+from model_loader import get_model_loader
 
 # Load environment variables
 load_dotenv()
@@ -29,6 +30,11 @@ app.add_middleware(
 class VerifyRequest(BaseModel):
     claim: str
 
+@app.on_event("startup")
+async def startup_event():
+    """Initialize the model on startup"""
+    get_model_loader()
+
 @app.get("/")
 async def root():
     return {"message": "Welcome to VeriGraph API"}
@@ -39,11 +45,15 @@ async def health_check():
 
 @app.post("/verify")
 async def verify_claim(request: VerifyRequest):
-    # TODO: Implement actual verification logic
+    # Get model loader and make prediction
+    loader = get_model_loader()
+    prediction = loader.predict(request.claim)
+    
     return {
         "status": "success",
         "claim": request.claim,
-        "result": "SUPPORTED",
-        "confidence": 0.85,
-        "message": "Claim received and processed"
+        "result": prediction.get("result", "UNKNOWN"),
+        "confidence": prediction.get("confidence", 0.0),
+        "mode": prediction.get("mode", "unknown"),
+        "message": "Claim processed successfully"
     }

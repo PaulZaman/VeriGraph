@@ -30,7 +30,11 @@ def test_verify_endpoint():
     data = response.json()
     assert "status" in data
     assert "claim" in data
+    assert "result" in data
+    assert "confidence" in data
+    assert "mode" in data
     assert data["claim"] == "The Eiffel Tower is in Paris"
+    assert data["mode"] in ["live", "mock", "error"]
 
 
 def test_verify_endpoint_empty_claim():
