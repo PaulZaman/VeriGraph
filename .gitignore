@@ -71,3 +71,6 @@ coverage/
 .cache/
 .temp/
 temp/
+
+# Model cache
+.model_cache/
