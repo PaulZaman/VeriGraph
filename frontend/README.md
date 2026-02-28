@@ -1,16 +1,78 @@
-# React + Vite
+# VeriGraph Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite frontend for VeriGraph automated fact-checking system.
 
-Currently, two official plugins are available:
+## Setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+1. Install dependencies:
+```bash
+npm install
+```
 
-## React Compiler
+2. Create environment file:
+```bash
+cp .env.example .env
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+3. Update `.env` with your backend API URL (default is localhost:8000)
 
-## Expanding the ESLint configuration
+## Running the Development Server
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+npm run dev
+```
+
+The app will be available at http://localhost:5173
+
+## Building for Production
+
+### Build with production environment variables
+```bash
+# Using .env.prod
+npm run build
+
+# Or specify environment file
+npm run build -- --mode production
+```
+
+### Preview production build locally
+```bash
+npm run preview
+```
+
+## Environment Variables
+
+Vite requires environment variables to be prefixed with `VITE_` to be exposed to the client.
+
+- `VITE_API_URL`: Backend API URL
+  - Local: `http://localhost:8000`
+  - Staging: `https://verigraph-api-staging.fly.dev`
+  - Production: `https://verigraph-api.fly.dev`
+
+### Environment Files
+
+- `.env` - Local development (not committed)
+- `.env.example` - Template for environment variables
+- `.env.staging` - Staging environment (not committed)
+- `.env.prod` - Production environment (not committed)
+
+To use different environment files:
+```bash
+# Development (uses .env)
+npm run dev
+
+# Staging
+npm run build -- --mode staging
+
+# Production  
+npm run build -- --mode production
+```
+
+## Technology Stack
+
+- React 18
+- Vite
+- TailwindCSS
+- React Router
+- Lucide Icons
+

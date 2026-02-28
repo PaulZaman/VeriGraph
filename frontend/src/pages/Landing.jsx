@@ -7,13 +7,15 @@ function Landing() {
   const [apiStatus, setApiStatus] = useState('')
   const [loading, setLoading] = useState(false)
 
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
   const handleSearch = async (e) => {
     e.preventDefault()
     setLoading(true)
     setApiStatus('')
     
     try {
-      const response = await fetch('http://localhost:8000/verify', {
+      const response = await fetch(`${API_URL}/verify`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
