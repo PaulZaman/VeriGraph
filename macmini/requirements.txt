@@ -1,0 +1,21 @@
+# ML Dependencies - unchanged from backend
+mlflow==2.10.2
+torch==2.2.0
+transformers==4.36.2
+datasets==2.16.1
+pandas==2.2.0
+numpy==1.26.3
+scikit-learn==1.4.0
+
+# Fact-checking model from GitHub
+git+https://github.com/MarcoSrhl/factcheck.git
+
+# NLP
+spacy==3.7.2
+
+# Database
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.25
+
+# Environment
+python-dotenv==1.0.1
