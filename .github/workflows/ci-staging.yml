@@ -55,11 +55,9 @@ jobs:
 
       # Build and test Docker image inline
       - name: Build Docker image
-        if: github.event_name == 'push'
         run: docker build -t verigraph-api:staging .
 
       - name: Test Docker image
-        if: github.event_name == 'push'
         run: |
           docker run -d --name test-api -p 8080:8080 -e TEST_MODE=true verigraph-api:staging
           sleep 5
