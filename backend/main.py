@@ -1,13 +1,62 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import os
+import uuid
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from sqlalchemy import create_engine, Column, String, DateTime, JSON, Integer
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 
 # Load environment variables
 load_dotenv()
 
-app = FastAPI(title="VeriGraph API", version="1.0.0")
+# Database setup
+Base = declarative_base()
+
+class Verification(Base):
+    """Verification task model"""
+    __tablename__ = 'verifications'
+    
+    id = Column(String, primary_key=True)
+    claim = Column(String, nullable=False)
+    environment = Column(String, nullable=False)
+    status = Column(String, nullable=False)
+    result = Column(JSON, nullable=True)
+    error = Column(String, nullable=True)
+    retries = Column(Integer, default=0)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+# Global database session
+db_session = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown events"""
+    global db_session
+    # Startup: Initialize database connection
+    db_url = os.getenv("NEON_DB_URL")
+    
+    # In test mode, use SQLite in-memory database
+    if os.getenv("TEST_MODE", "false").lower() == "true" and not db_url:
+        db_url = "sqlite:///:memory:"
+    
+    if not db_url:
+        raise ValueError("NEON_DB_URL environment variable is required")
+    
+    engine = create_engine(db_url)
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    db_session = Session()
+    yield
+    # Shutdown: cleanup
+    if db_session:
+        db_session.close()
+
+app = FastAPI(title="VeriGraph API", version="1.0.0", lifespan=lifespan)
 
 # Get environment variables
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
@@ -29,6 +78,7 @@ app.add_middleware(
 class VerifyRequest(BaseModel):
     claim: str
 
+
 @app.get("/")
 async def root():
     return {"message": "Welcome to VeriGraph API"}
@@ -39,11 +89,55 @@ async def health_check():
 
 @app.post("/verify")
 async def verify_claim(request: VerifyRequest):
-    # TODO: Implement actual verification logic
+    """Create a new verification task"""
+    # Determine environment based on MODEL_STAGE or ENVIRONMENT
+    model_stage = os.getenv("MODEL_STAGE", "Staging")
+    environment = 'staging' if model_stage == 'Staging' else 'production'
+    
+    # Create verification task
+    task_id = str(uuid.uuid4())
+    task = Verification(
+        id=task_id,
+        claim=request.claim,
+        environment=environment,
+        status='pending',
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc)
+    )
+    
+    db_session.add(task)
+    db_session.commit()
+    
     return {
         "status": "success",
-        "claim": request.claim,
-        "result": "SUPPORTED",
-        "confidence": 0.85,
-        "message": "Claim received and processed"
+        "task_id": task_id,
+        "message": "Verification task created. Use GET /verify/{task_id} to check status."
     }
+
+@app.get("/verify/{task_id}")
+async def get_verification(task_id: str):
+    """Get verification task status and results"""
+    task = db_session.query(Verification).filter(Verification.id == task_id).first()
+    
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    response = {
+        "task_id": task.id,
+        "claim": task.claim,
+        "status": task.status,
+        "created_at": task.created_at.isoformat(),
+        "updated_at": task.updated_at.isoformat()
+    }
+    
+    if task.status == 'completed' and task.result:
+        response.update({
+            "verdict": task.result.get("label", "UNKNOWN"),
+            "confidence": task.result.get("confidence", 0.0),
+            "probabilities": task.result.get("probabilities", {}),
+            "mode": task.result.get("mode", "unknown")
+        })
+    elif task.status == 'failed':
+        response["error"] = task.error
+    
+    return response
