@@ -148,6 +148,19 @@ async def get_verification(task_id: str):
 # Data Viewing Endpoints
 # ==============================================================================
 
+@app.get("/data/runs")
+async def list_training_runs():
+    """List all training runs with their models and data counts"""
+    service = get_data_service()
+    runs = service.list_training_runs()
+    
+    return {
+        "status": "success",
+        "count": len(runs),
+        "runs": runs
+    }
+
+
 @app.get("/data/model/{model_id}")
 async def get_model_training_data(
     model_id: str,
@@ -200,3 +213,16 @@ async def search_model_claims(
         "count": len(results),
         "results": results
     }
+
+
+@app.get("/data")
+async def get_current_model_training_data():
+    """
+    Get training data for the currently active model based on MODEL_STAGE environment.
+    Automatically determines which model to show based on Staging/Production stage.
+    """
+    service = get_data_service()
+    result = service.get_current_model_data()
+    
+    return result
+

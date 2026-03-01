@@ -1,91 +1,60 @@
 import { useState, useEffect } from 'react'
-import { Database, Search, FileText, BarChart3, Download, RefreshCw } from 'lucide-react'
+import { Database, Search, BarChart3, FileText, Loader2, AlertCircle } from 'lucide-react'
 import Header from '../components/Header'
 
 function Data() {
-  const [files, setFiles] = useState([])
+  const [modelInfo, setModelInfo] = useState(null)
+  const [trainingData, setTrainingData] = useState([])
   const [stats, setStats] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
-  const [selectedEntity, setSelectedEntity] = useState(null)
   const [loading, setLoading] = useState(false)
-  const [dataLoaded, setDataLoaded] = useState(false)
-  const [loadingData, setLoadingData] = useState(false)
+  const [error, setError] = useState(null)
+  const [activeTab, setActiveTab] = useState('overview')
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-  // Fetch available files on mount
+  // Fetch current model data on mount
   useEffect(() => {
-    fetchFiles()
-    fetchStats()
+    fetchCurrentModelData()
   }, [])
 
-  const fetchFiles = async () => {
+  const fetchCurrentModelData = async () => {
+    setLoading(true)
+    setError(null)
     try {
-      const response = await fetch(`${API_URL}/data/files`)
-      const data = await response.json()
-      if (data.status === 'success') {
-        setFiles(data.files)
-      }
-    } catch (error) {
-      console.error('Error fetching files:', error)
-    }
-  }
-
-  const fetchStats = async () => {
-    try {
-      const response = await fetch(`${API_URL}/data/stats`)
-      const data = await response.json()
-      if (data.status === 'success') {
-        setStats(data.data)
-        setDataLoaded(data.data.loaded || false)
-      }
-    } catch (error) {
-      console.error('Error fetching stats:', error)
-    }
-  }
-
-  const handleLoadData = async (filename = null) => {
-    setLoadingData(true)
-    try {
-      const url = filename 
-        ? `${API_URL}/data/load?filename=${encodeURIComponent(filename)}`
-        : `${API_URL}/data/load`
+      const response = await fetch(`${API_URL}/data`)
+      const result = await response.json()
       
-      const response = await fetch(url, { method: 'POST' })
-      const data = await response.json()
-      
-      if (data.status === 'success') {
-        setStats(data.stats)
-        setDataLoaded(true)
-        alert(`✅ Loaded ${data.stats.triples} triples successfully!`)
+      if (result.status === 'success') {
+        setModelInfo(result.model_info)
+        setTrainingData(result.data || [])
+        setStats(result.stats)
       } else {
-        alert(`❌ Failed to load data: ${data.message}`)
+        setError(result.error || 'Failed to load model data')
       }
-    } catch (error) {
-      console.error('Error loading data:', error)
-      alert('❌ Error loading data')
+    } catch (err) {
+      console.error('Error fetching current model data:', err)
+      setError('Failed to connect to API')
     } finally {
-      setLoadingData(false)
+      setLoading(false)
     }
   }
 
   const handleSearch = async (e) => {
     e.preventDefault()
-    if (!searchQuery.trim()) return
+    if (!searchQuery.trim() || !modelInfo) return
 
     setLoading(true)
-    setSearchResults([])
-    setSelectedEntity(null)
-
     try {
-      const response = await fetch(`${API_URL}/data/search?q=${encodeURIComponent(searchQuery)}&limit=20`)
+      const response = await fetch(
+        `${API_URL}/data/model/${modelInfo.model_id}/search?q=${encodeURIComponent(searchQuery)}&limit=50`
+      )
       const data = await response.json()
       
       if (data.status === 'success') {
         setSearchResults(data.results)
-      } else if (data.status === 'error') {
-        alert(data.message)
+        setActiveTab('search')
       }
     } catch (error) {
       console.error('Error searching:', error)
@@ -94,231 +63,275 @@ function Data() {
     }
   }
 
-  const handleSelectEntity = async (entityUri) => {
-    const entityName = entityUri.split('/').pop()
-    setLoading(true)
-
-    try {
-      const response = await fetch(`${API_URL}/data/entity/${encodeURIComponent(entityName)}`)
-      const data = await response.json()
-      
-      if (data.status === 'success') {
-        setSelectedEntity(data.entity)
-      } else {
-        alert('Entity not found')
-      }
-    } catch (error) {
-      console.error('Error fetching entity:', error)
-    } finally {
-      setLoading(false)
+  const getLabelColor = (label) => {
+    switch (label?.toUpperCase()) {
+      case 'SUPPORTED': return 'bg-green-100 text-green-800'
+      case 'REFUTED': return 'bg-red-100 text-red-800'
+      case 'NOT ENOUGH INFO': return 'bg-yellow-100 text-yellow-800'
+      default: return 'bg-gray-100 text-gray-800'
     }
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+    <div className="min-h-screen bg-gray-50">
       <Header />
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {/* Header */}
-        <div className="text-center mb-12">
-          <h2 className="text-5xl font-bold text-gray-900 mb-4 flex items-center justify-center gap-3">
-            <Database className="w-12 h-12 text-blue-600" />
-            Data Viewer
-          </h2>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            Explore DBpedia knowledge graph data used for fact-checking
+      
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
+            <Database className="w-8 h-8 text-blue-600" />
+            Training Data Viewer
+          </h1>
+          <p className="mt-2 text-gray-600">
+            View training data for the currently active model
           </p>
         </div>
 
-        {/* Stats Card */}
-        <div className="bg-white rounded-2xl shadow-lg p-8 mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <BarChart3 className="w-6 h-6" />
-              Data Statistics
-            </h3>
-            <button
-              onClick={fetchStats}
-              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-              title="Refresh stats"
+        {error ? (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+            <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-3" />
+            <p className="text-red-700 font-medium">{error}</p>
+            <button 
+              onClick={fetchCurrentModelData}
+              className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
             >
-              <RefreshCw className="w-5 h-5" />
+              Retry
             </button>
           </div>
-
-          {stats ? (
-            <div className="grid md:grid-cols-3 gap-6">
-              <div className="text-center p-4 bg-blue-50 rounded-xl">
-                <div className="text-3xl font-bold text-blue-600">{stats.loaded ? 'Loaded' : 'Not Loaded'}</div>
-                <div className="text-sm text-gray-600 mt-1">Status</div>
-              </div>
-              <div className="text-center p-4 bg-green-50 rounded-xl">
-                <div className="text-3xl font-bold text-green-600">{stats.triples?.toLocaleString() || 0}</div>
-                <div className="text-sm text-gray-600 mt-1">Triples</div>
-              </div>
-              <div className="text-center p-4 bg-purple-50 rounded-xl">
-                <div className="text-3xl font-bold text-purple-600">{stats.entities?.toLocaleString() || 0}</div>
-                <div className="text-sm text-gray-600 mt-1">Entities</div>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center text-gray-500">Loading stats...</div>
-          )}
-
-          {!dataLoaded && (
-            <div className="mt-6 text-center">
-              <button
-                onClick={() => handleLoadData()}
-                disabled={loadingData}
-                className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
-              >
-                {loadingData ? (
-                  <>
-                    <RefreshCw className="inline w-5 h-5 mr-2 animate-spin" />
-                    Loading Data...
-                  </>
-                ) : (
-                  <>
-                    <Download className="inline w-5 h-5 mr-2" />
-                    Load Data Into Memory
-                  </>
-                )}
-              </button>
-              <p className="text-sm text-gray-500 mt-2">
-                This will load RDF data from DVC storage. May take a few minutes.
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Available Files */}
-        <div className="bg-white rounded-2xl shadow-lg p-8 mb-8">
-          <h3 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-            <FileText className="w-6 h-6" />
-            Available Data Files
-          </h3>
-
-          {files.length > 0 ? (
-            <div className="space-y-3">
-              {files.map((file, index) => (
-                <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                  <div>
-                    <div className="font-semibold text-gray-900">{file.name}</div>
-                    <div className="text-sm text-gray-600">{file.size_mb} MB  • {file.type}</div>
+        ) : loading && !modelInfo ? (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+            <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-4" />
+            <p className="text-gray-600">Loading model data...</p>
+          </div>
+        ) : !modelInfo ? (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+            <Database className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-600">No model data available</p>
+          </div>
+        ) : (
+          <>
+            {/* Model Info Header */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <div className="text-sm text-gray-600">Model Name</div>
+                  <div className="text-sm font-semibold mt-1">{modelInfo.model_name}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-600">Version</div>
+                  <div className="text-sm font-semibold mt-1">v{modelInfo.version}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-600">Stage</div>
+                  <div className="mt-1">
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      modelInfo.stage === 'Production' 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-blue-100 text-blue-800'
+                    }`}>
+                      {modelInfo.stage}
+                    </span>
                   </div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-600">Training Samples</div>
+                  <div className="text-sm font-semibold mt-1">{stats?.total_samples || 0}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+              <div className="border-b border-gray-200">
+                <div className="flex">
                   <button
-                    onClick={() => handleLoadData(file.name)}
-                    disabled={loadingData}
-                    className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400"
+                    onClick={() => setActiveTab('overview')}
+                    className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                      activeTab === 'overview'
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-600 hover:text-gray-900'
+                    }`}
                   >
-                    Load
+                    <BarChart3 className="w-4 h-4 inline mr-2" />
+                    Overview
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('data')}
+                    className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                      activeTab === 'data'
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <FileText className="w-4 h-4 inline mr-2" />
+                    Data ({trainingData.length})
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('search')}
+                    className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                      activeTab === 'search'
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <Search className="w-4 h-4 inline mr-2" />
+                    Search
                   </button>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center text-gray-500 py-8">
-              No data files found. Make sure DVC is configured and run <code className="bg-gray-100 px-2 py-1 rounded">dvc pull</code>
-            </div>
-          )}
-        </div>
-
-        {/* Search Section */}
-        {dataLoaded && (
-          <div className="bg-white rounded-2xl shadow-lg p-8 mb-8">
-            <h3 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <Search className="w-6 h-6" />
-              Search Entities
-            </h3>
-
-            <form onSubmit={handleSearch} className="mb-6">
-              <div className="flex gap-4">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search for entities (e.g., Paris, Albert_Einstein)..."
-                  className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 transition-colors"
-                />
-                <button
-                  type="submit"
-                  disabled={loading || !searchQuery.trim()}
-                  className="px-8 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
-                >
-                  {loading ? 'Searching...' : 'Search'}
-                </button>
               </div>
-            </form>
 
-            {/* Search Results */}
-            {searchResults.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="font-semibold text-gray-700 mb-3">Search Results ({searchResults.length})</h4>
-                {searchResults.map((result, index) => (
-                  <div
-                    key={index}
-                    onClick={() => handleSelectEntity(result.uri)}
-                    className="p-4 bg-blue-50 rounded-lg hover:bg-blue-100 cursor-pointer transition-colors"
-                  >
-                    <div className="font-semibold text-blue-900">{result.label}</div>
-                    <div className="text-sm text-blue-600 truncate">{result.uri}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Selected Entity Details */}
-            {selectedEntity && (
-              <div className="mt-8 p-6 bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl">
-                <h4 className="text-xl font-bold text-gray-900 mb-4">Entity Details</h4>
-                
-                <div className="mb-4">
-                  <div className="text-sm text-gray-600">Label</div>
-                  <div className="text-lg font-semibold text-gray-900">{selectedEntity.label || 'No label'}</div>
-                </div>
-
-                <div className="mb-4">
-                  <div className="text-sm text-gray-600">URI</div>
-                  <a href={selectedEntity.uri} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">
-                    {selectedEntity.uri}
-                  </a>
-                </div>
-
-                {selectedEntity.types && selectedEntity.types.length > 0 && (
-                  <div className="mb-4">
-                    <div className="text-sm text-gray-600 mb-2">Types</div>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedEntity.types.map((type, i) => (
-                        <span key={i} className="px-3 py-1 bg-purple-100 text-purple-700 text-sm rounded-full">
-                          {type.split('/').pop().replace(/_/g, ' ')}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {selectedEntity.properties && selectedEntity.properties.length > 0 && (
-                  <div>
-                    <div className="text-sm text-gray-600 mb-2">Properties ({selectedEntity.properties.length})</div>
-                    <div className="max-h-96 overflow-y-auto space-y-2">
-                      {selectedEntity.properties.map((prop, i) => (
-                        <div key={i} className="p-3 bg-white rounded-lg">
-                          <div className="text-sm font-semibold text-gray-700 truncate">
-                            {prop.predicate.split('/').pop().replace(/_/g, ' ')}
-                          </div>
-                          <div className="text-sm text-gray-600 break-all">
-                            {prop.object}
-                          </div>
+              <div className="p-6">
+                {/* Overview Tab */}
+                {activeTab === 'overview' && (
+                  <div className="space-y-6">
+                    {stats && stats.label_distribution && (
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                          Label Distribution
+                        </h3>
+                        <div className="space-y-3">
+                          {Object.entries(stats.label_distribution).map(([label, count]) => (
+                            <div key={label}>
+                              <div className="flex justify-between items-center mb-1">
+                                <span className={`text-sm px-2 py-1 rounded ${getLabelColor(label)}`}>
+                                  {label}
+                                </span>
+                                <span className="text-sm text-gray-600">
+                                  {count} ({((count / stats.total_samples) * 100).toFixed(1)}%)
+                                </span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div
+                                  className="bg-blue-600 h-2 rounded-full transition-all"
+                                  style={{ width: `${(count / stats.total_samples) * 100}%` }}
+                                />
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    )}
+
+                    {modelInfo.description && (
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                          Description
+                        </h3>
+                        <p className="text-sm text-gray-600">{modelInfo.description}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Data Tab */}
+                {activeTab === 'data' && (
+                  <div className="space-y-4">
+                    {loading ? (
+                      <div className="text-center py-8">
+                        <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto" />
+                      </div>
+                    ) : trainingData.length === 0 ? (
+                      <div className="text-center py-8 text-gray-500">
+                        <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                        <p>No training data found</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {trainingData.map((item) => (
+                          <div key={item.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                            <div className="flex justify-between items-start mb-2">
+                              <span className={`text-xs px-2 py-1 rounded ${getLabelColor(item.label)}`}>
+                                {item.label}
+                              </span>
+                              <span className="text-xs text-gray-500">ID: {item.id}</span>
+                            </div>
+                            <p className="text-sm text-gray-900 mb-3">{item.claim}</p>
+                            {item.evidence && item.evidence.length > 0 && (
+                              <div className="mt-3 pt-3 border-t border-gray-200">
+                                <div className="text-xs font-semibold text-gray-700 mb-2">Evidence:</div>
+                                <div className="space-y-2">
+                                  {item.evidence.map((ev, idx) => (
+                                    <div key={idx} className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
+                                      {ev}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Search Tab */}
+                {activeTab === 'search' && (
+                  <div className="space-y-4">
+                    <form onSubmit={handleSearch} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search claims..."
+                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <button
+                        type="submit"
+                        disabled={loading || !searchQuery.trim()}
+                        className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      >
+                        {loading ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Search className="w-4 h-4" />
+                        )}
+                        Search
+                      </button>
+                    </form>
+
+                    {searchResults.length > 0 ? (
+                      <div className="space-y-4">
+                        <div className="text-sm text-gray-600">
+                          Found {searchResults.length} results
+                        </div>
+                        {searchResults.map((item) => (
+                          <div key={item.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                            <div className="flex justify-between items-start mb-2">
+                              <span className={`text-xs px-2 py-1 rounded ${getLabelColor(item.label)}`}>
+                                {item.label}
+                              </span>
+                              <span className="text-xs text-gray-500">ID: {item.id}</span>
+                            </div>
+                            <p className="text-sm text-gray-900 mb-3">{item.claim}</p>
+                            {item.evidence && item.evidence.length > 0 && (
+                              <div className="mt-3 pt-3 border-t border-gray-200">
+                                <div className="text-xs font-semibold text-gray-700 mb-2">Evidence:</div>
+                                <div className="space-y-2">
+                                  {item.evidence.map((ev, idx) => (
+                                    <div key={idx} className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
+                                      {ev}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : searchQuery && !loading ? (
+                      <div className="text-center py-8 text-gray-500">
+                        <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                        <p>No results found for "{searchQuery}"</p>
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>
-            )}
-          </div>
+            </div>
+          </>
         )}
-      </main>
+      </div>
     </div>
   )
 }
