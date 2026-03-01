@@ -53,6 +53,18 @@ jobs:
           NEON_DB_URL: ${{ secrets.NEON_DB_URL }}
         run: python -m pytest test_main.py -v --tb=short
 
+      # Promote model from Staging to Production (only on push)
+      - name: Promote Model to Production
+        if: github.event_name == 'push'
+        env:
+          DAGSHUB_REPO: ${{ secrets.DAGSHUB_REPO }}
+          DAGSHUB_USER: ${{ secrets.DAGSHUB_USER }}
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+          MODEL_NAME: ${{ secrets.MODEL_NAME }}
+        run: |
+          pip install mlflow
+          python promote_model.py
+
       # Build and test Docker image inline
       - name: Build Docker image
         run: docker build -t verigraph-api:production .
