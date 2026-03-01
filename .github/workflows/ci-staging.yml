@@ -64,12 +64,13 @@ jobs:
           context: ./backend
           push: false
           tags: verigraph-api:test
+          build-args: |
+            BASE_IMAGE=ghcr.io/paulzaman/verigraph/verigraph-base:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Test Docker image
         run: |
-          docker build -t verigraph-api:test .
           docker run --rm verigraph-api:test python -c "import fastapi; print('FastAPI imported successfully')"
 
   frontend-build:
