@@ -106,9 +106,21 @@ class ModelLoader:
                 model_cache_path = os.path.join(self.cache_dir, f"v{model_version_num}")
                 cache_exists = os.path.exists(os.path.join(model_cache_path, "model", "config.json"))
                 
+                # Also check old cache structure (migration from run_id based cache)
+                old_cache_path = os.path.join(self.cache_dir, run_id)
+                old_cache_exists = os.path.exists(os.path.join(old_cache_path, "components", "model", "config.json"))
+                
                 if cache_exists:
                     logger.info(f"✨ Using cached model v{model_version_num} from: {model_cache_path}")
                     model_path = model_cache_path
+                elif old_cache_exists:
+                    # Migrate old cache to new structure
+                    logger.info(f"📦 Migrating old cache from run_id to version-based cache...")
+                    logger.info(f"Old cache: {old_cache_path}")
+                    logger.info(f"New cache: {model_cache_path}")
+                    shutil.copytree(old_cache_path, model_cache_path)
+                    model_path = model_cache_path
+                    logger.info(f"✅ Cache migrated successfully!")
                 else:
                     # Download model artifacts with retry logic (DagHub can be slow/flaky)
                     logger.info(f"📥 Downloading from: {model_uri} (stage: {self.model_stage})")
