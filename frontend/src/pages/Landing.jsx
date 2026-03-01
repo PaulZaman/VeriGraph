@@ -1,21 +1,63 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { CheckCircle, XCircle, HelpCircle, Shield, Globe, Brain, Zap, Database, Link2, Search } from 'lucide-react'
 import Header from '../components/Header'
+import ResultCard from '../components/ResultCard'
 
 function Landing() {
   const [searchQuery, setSearchQuery] = useState('')
   const [apiStatus, setApiStatus] = useState('')
   const [apiConnected, setApiConnected] = useState(null)
   const [loading, setLoading] = useState(false)
-  const [response, setResponse] = useState(null)
+  const [result, setResult] = useState(null)
+  const [taskId, setTaskId] = useState(null)
+  const pollingIntervalRef = useRef(null)
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+      }
+    }
+  }, [])
+
+  // Poll for task status
+  const pollTaskStatus = async (id) => {
+    try {
+      const response = await fetch(`${API_URL}/verify/${id}`)
+      
+      if (response.ok) {
+        const data = await response.json()
+        setResult(data)
+        
+        // Stop polling if task is completed or failed
+        if (data.status === 'completed' || data.status === 'failed') {
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current)
+            pollingIntervalRef.current = null
+          }
+          setLoading(false)
+        }
+      }
+    } catch (error) {
+      console.error('Polling error:', error)
+    }
+  }
 
   const handleSearch = async (e) => {
     e.preventDefault()
     setLoading(true)
     setApiStatus('')
-    setResponse(null)
+    setResult(null)
+    setTaskId(null)
+    
+    // Clear any existing polling
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current)
+      pollingIntervalRef.current = null
+    }
     
     try {
       const response = await fetch(`${API_URL}/verify`, {
@@ -30,19 +72,38 @@ function Landing() {
         setApiStatus('api connected')
         setApiConnected(true)
         const data = await response.json()
-        setResponse(data)
-        console.log('API Response:', data)
+        
+        console.log('Task created:', data)
+        
+        if (data.task_id) {
+          setTaskId(data.task_id)
+          
+          // Set result to pending state
+          setResult({
+            status: 'pending',
+            task_id: data.task_id,
+            claim: searchQuery
+          })
+          
+          // Start polling every 1 second
+          pollingIntervalRef.current = setInterval(() => {
+            pollTaskStatus(data.task_id)
+          }, 1000)
+          
+          // Do first poll immediately
+          pollTaskStatus(data.task_id)
+        }
       } else {
         setApiStatus('api disconnected')
         setApiConnected(false)
-        setResponse(null)
+        setResult(null)
+        setLoading(false)
       }
     } catch (error) {
       console.error('API Error:', error)
       setApiStatus('api disconnected')
       setApiConnected(false)
-      setResponse(null)
-    } finally {
+      setResult(null)
       setLoading(false)
     }
   }
@@ -93,14 +154,12 @@ function Landing() {
               </p>
             </div>
           )}
-          {response && (
-            <div className="mt-6 bg-gray-900 rounded-lg p-6 text-left overflow-x-auto">
-              <pre className="text-green-400 text-sm font-mono">
-                {JSON.stringify(response, null, 2)}
-              </pre>
-            </div>
-          )}
         </div>
+
+        {/* Result Display */}
+        {result && (
+          <ResultCard result={result} claim={searchQuery} />
+        )}
 
         {/* How It Works Section */}
         <div id="how-it-works" className="mb-16">

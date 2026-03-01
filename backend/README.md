@@ -1,6 +1,38 @@
 # VeriGraph Backend
 
-FastAPI backend for VeriGraph application.
+FastAPI backend for VeriGraph - **Lightweight API Layer** (No ML Dependencies)
+
+## 🏗️ Architecture
+
+This backend is part of a **3-tier architecture**:
+
+```
+Frontend (React) → Backend (FastAPI) → MacMini ML Server
+                         ↓
+                  PostgreSQL (Neon)
+```
+
+**Backend Role:**
+- ✅ Receives fact-check requests
+- ✅ Creates tasks in PostgreSQL
+- ✅ Returns task status and results
+- ❌ Does NOT run ML inference (handled by MacMini server)
+
+**Why this architecture?**
+- Fast Docker builds (~30 seconds vs 5 minutes)
+- Reduced Fly.io costs (no ML on expensive cloud VMs)
+- ML runs on local MacMini M1 hardware
+- Scalable API layer independent of ML inference
+
+## 📦 Dependencies
+
+**Minimal & Fast:**
+- FastAPI - Web framework
+- SQLAlchemy - Database ORM
+- psycopg2 - PostgreSQL driver
+- Pydantic - Data validation
+
+**No ML Libraries:** torch, transformers, mlflow, spacy moved to MacMini server
 
 ## Setup
 
