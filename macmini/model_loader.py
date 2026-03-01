@@ -23,15 +23,12 @@ class ModelLoader:
         self.dagshub_repo = os.getenv("DAGSHUB_REPO", "MarcoSrhl/NLP-Fact-checking")
         self.model_name = os.getenv("MODEL_NAME", "fact-checker-bert")
         self.model_stage = model_stage or os.getenv("MODEL_STAGE", "Staging")  # Can be overridden
-        self.huggingface_model = os.getenv("HUGGINGFACE_MODEL")  # Optional HuggingFace fallback
         self.cache_dir = os.path.join(os.getcwd(), ".model_cache")
         self.test_mode = os.getenv("TEST_MODE", "false").lower() == "true"
         
         # Log configuration
         if not self.test_mode:
             logger.info(f"Model configuration: {self.model_name} @ {self.model_stage}")
-            if self.huggingface_model:
-                logger.info(f"HuggingFace fallback: {self.huggingface_model}")
         
     def initialize(self):
         """Initialize and download the model from MLflow"""
@@ -41,69 +38,7 @@ class ModelLoader:
             self.model_loaded = False
             return
         
-        # Option 1: Try HuggingFace model if specified (fastest, most reliable)
-        if self.huggingface_model:
-            try:
-                logger.info(f"🤗 Loading model from HuggingFace: {self.huggingface_model}")
-                from transformers import AutoModelForSequenceClassification, AutoTokenizer
-                
-                model = AutoModelForSequenceClassification.from_pretrained(self.huggingface_model)
-                tokenizer = AutoTokenizer.from_pretrained(self.huggingface_model)
-                
-                # Wrap in prediction class
-                class HFModelWrapper:
-                    def __init__(self, model, tokenizer, name):
-                        self.model = model
-                        self.tokenizer = tokenizer
-                        self.name = name
-                        self.label_map = {0: "SUPPORTED", 1: "REFUTED", 2: "NOT ENOUGH INFO"}
-                        
-                        # Detect device
-                        import torch
-                        self.device = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
-                        self.model.to(self.device)
-                        logger.info(f"🎯 Model loaded on device: {self.device.upper()}")
-                    
-                    def predict(self, claim, evidence=""):
-                        import torch
-                        text = f"{claim} [SEP] {evidence}" if evidence else claim
-                        
-                        inputs = self.tokenizer(
-                            text,
-                            return_tensors="pt",
-                            truncation=True,
-                            max_length=512,
-                            padding=True
-                        ).to(self.device)
-                        
-                        with torch.no_grad():
-                            outputs = self.model(**inputs)
-                            logits = outputs.logits
-                            probs = torch.nn.functional.softmax(logits, dim=-1)[0]
-                        
-                        probs_np = probs.cpu().numpy()
-                        label_id = int(probs_np.argmax())
-                        
-                        return {
-                            "label": self.label_map.get(label_id, "UNKNOWN"),
-                            "confidence": float(probs_np[label_id]),
-                            "probabilities": {
-                                "SUPPORTED": float(probs_np[0]),
-                                "REFUTED": float(probs_np[1]),
-                                "NOT ENOUGH INFO": float(probs_np[2])
-                            }
-                        }
-                
-                self.checker = HFModelWrapper(model, tokenizer, self.huggingface_model)
-                self.model_loaded = True
-                logger.info("✅ HuggingFace model loaded successfully!")
-                return
-                
-            except Exception as e:
-                logger.warning(f"Failed to load HuggingFace model: {e}")
-                logger.info("Falling back to DagHub MLflow...")
-        
-        # Option 2: Try DagHub MLflow (original method)
+        # Load model from DagHub MLflow
         try:
             logger.info(f"Connecting to DagHub repo: {self.dagshub_repo}")
             
@@ -162,33 +97,64 @@ class ModelLoader:
                 from transformers import AutoModelForSequenceClassification, AutoTokenizer
                 import torch
                 import time
+                import shutil
                 
-                # Use MLflow model URI format with configured stage
-                model_uri = f"models:/{self.model_name}/{self.model_stage}"
-                logger.info(f"Downloading from: {model_uri}")
+                # Use MLflow model URI format with version number (avoids deprecated stage-based API)
+                model_uri = f"models:/{self.model_name}/{model_version_num}"
                 
-                # Download model artifacts with retry logic (DagHub can be slow/flaky)
-                max_retries = 3
-                retry_delay = 5
-                model_path = None
+                # Check cache first before downloading
+                model_cache_path = os.path.join(self.cache_dir, f"v{model_version_num}")
+                cache_exists = os.path.exists(os.path.join(model_cache_path, "model", "config.json"))
                 
-                for attempt in range(max_retries):
-                    try:
-                        logger.info(f"Download attempt {attempt + 1}/{max_retries}...")
-                        model_path = mlflow.artifacts.download_artifacts(model_uri)
-                        logger.info(f"✅ Artifacts downloaded to: {model_path}")
-                        break
-                    except Exception as download_error:
-                        if attempt < max_retries - 1:
-                            logger.warning(f"Download attempt {attempt + 1} failed: {str(download_error)}")
-                            logger.info(f"Retrying in {retry_delay} seconds...")
-                            time.sleep(retry_delay)
-                            retry_delay *= 2  # Exponential backoff
-                        else:
-                            raise Exception(f"Failed to download after {max_retries} attempts: {str(download_error)}")
+                # Also check old cache structure (migration from run_id based cache)
+                old_cache_path = os.path.join(self.cache_dir, run_id)
+                old_cache_exists = os.path.exists(os.path.join(old_cache_path, "components", "model", "config.json"))
                 
-                if not model_path:
-                    raise Exception("Model download failed - no path returned")
+                if cache_exists:
+                    logger.info(f"✨ Using cached model v{model_version_num} from: {model_cache_path}")
+                    model_path = model_cache_path
+                elif old_cache_exists:
+                    # Migrate old cache to new structure
+                    logger.info(f"📦 Migrating old cache from run_id to version-based cache...")
+                    logger.info(f"Old cache: {old_cache_path}")
+                    logger.info(f"New cache: {model_cache_path}")
+                    shutil.copytree(old_cache_path, model_cache_path)
+                    model_path = model_cache_path
+                    logger.info(f"✅ Cache migrated successfully!")
+                else:
+                    # Download model artifacts with retry logic (DagHub can be slow/flaky)
+                    logger.info(f"📥 Downloading from: {model_uri} (stage: {self.model_stage})")
+                    max_retries = 3
+                    retry_delay = 5
+                    downloaded_path = None
+                    
+                    for attempt in range(max_retries):
+                        try:
+                            logger.info(f"Download attempt {attempt + 1}/{max_retries}...")
+                            # MLflow downloads to its own cache and returns the path
+                            downloaded_path = mlflow.artifacts.download_artifacts(model_uri)
+                            logger.info(f"✅ Artifacts downloaded to: {downloaded_path}")
+                            break
+                        except Exception as download_error:
+                            if attempt < max_retries - 1:
+                                logger.warning(f"Download attempt {attempt + 1} failed: {str(download_error)}")
+                                logger.info(f"Retrying in {retry_delay} seconds...")
+                                time.sleep(retry_delay)
+                                retry_delay *= 2  # Exponential backoff
+                            else:
+                                raise Exception(f"Failed to download after {max_retries} attempts: {str(download_error)}")
+                    
+                    if not downloaded_path:
+                        raise Exception("Model download failed - no path returned")
+                    
+                    # Copy to our persistent cache for faster future loads
+                    logger.info(f"💾 Caching model to: {model_cache_path}")
+                    os.makedirs(os.path.dirname(model_cache_path), exist_ok=True)
+                    if os.path.exists(model_cache_path):
+                        shutil.rmtree(model_cache_path)
+                    shutil.copytree(downloaded_path, model_cache_path)
+                    model_path = model_cache_path
+                    logger.info(f"✅ Model cached for future use")
                 
                 # Check various possible structures
                 # MLflow transformers format can use components/ subdirectory
@@ -337,6 +303,7 @@ class ModelLoader:
                     model_path = os.path.join(downloaded_path, "model")
                     tokenizer_path = model_path  # Assume tokenizer is in same folder
                     logger.info("✓ Using standard model format")
+            
             
             # Load using the factcheck package
             logger.info(f"🔄 Loading model with factcheck package...")
