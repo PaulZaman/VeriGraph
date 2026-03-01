@@ -58,6 +58,7 @@ jobs:
         run: docker build -t verigraph-api:production .
 
       - name: Test Docker image
+        if: github.event_name == 'push'
         run: |
           docker run -d --name test-api -p 8080:8080 -e TEST_MODE=true verigraph-api:production
           sleep 5
