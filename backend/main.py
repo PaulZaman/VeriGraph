@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from sqlalchemy import create_engine, Column, String, DateTime, JSON, Integer
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from data_service import get_data_service
 
 # Load environment variables
 load_dotenv()
@@ -141,3 +142,61 @@ async def get_verification(task_id: str):
         response["error"] = task.error
     
     return response
+
+
+# ==============================================================================
+# Data Viewing Endpoints
+# ==============================================================================
+
+@app.get("/data/model/{model_id}")
+async def get_model_training_data(
+    model_id: str,
+    limit: int = Query(100, ge=1, le=1000, description="Maximum results")
+):
+    """Get training data for a specific model"""
+    service = get_data_service()
+    data = service.get_model_data(model_id, limit)
+    
+    return {
+        "status": "success",
+        "model_id": model_id,
+        "count": len(data),
+        "data": data
+    }
+
+
+@app.get("/data/model/{model_id}/stats")
+async def get_model_data_stats(model_id: str):
+    """Get statistics about training data for a model"""
+    service = get_data_service()
+    stats = service.get_model_stats(model_id)
+    
+    if not stats:
+        return {
+            "status": "error",
+            "message": f"No data found for model {model_id}"
+        }
+    
+    return {
+        "status": "success",
+        **stats
+    }
+
+
+@app.get("/data/model/{model_id}/search")
+async def search_model_claims(
+    model_id: str,
+    q: str = Query(..., description="Search query"),
+    limit: int = Query(20, ge=1, le=100, description="Maximum results")
+):
+    """Search claims in model training data"""
+    service = get_data_service()
+    results = service.search_claims(model_id, q, limit)
+    
+    return {
+        "status": "success",
+        "model_id": model_id,
+        "query": q,
+        "count": len(results),
+        "results": results
+    }

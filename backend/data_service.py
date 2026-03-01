@@ -1,234 +1,166 @@
 """
 Data Service for VeriGraph
-Handles DVC operations and RDF data querying
+Handles model training data queries from Neon DB
 """
 
 import os
 import logging
 from typing import List, Dict, Optional
-from pathlib import Path
-import subprocess
-from rdflib import Graph, Namespace, URIRef, Literal
-from rdflib.namespace import RDFS, RDF
+from sqlalchemy import create_engine, Column, String, DateTime, JSON, Integer, Text
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# DBpedia namespaces
-DBPEDIA = Namespace("http://dbpedia.org/resource/")
-DBPEDIA_ONT = Namespace("http://dbpedia.org/ontology/")
-DBPEDIA_PROP = Namespace("http://dbpedia.org/property/")
+load_dotenv()
+
+Base = declarative_base()
+
+
+class ModelTrainingData(Base):
+    """Model training data stored in Neon DB"""
+    __tablename__ = 'model_training_data'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    model_id = Column(String, nullable=False, index=True)  # Links to MLflow model
+    model_version = Column(String, nullable=False)
+    claim = Column(Text, nullable=False)
+    label = Column(String, nullable=False)  # SUPPORTED, REFUTED, NOT ENOUGH INFO
+    evidence = Column(JSON, nullable=True)  # List of evidence texts
+    metadata = Column(JSON, nullable=True)  # Additional metadata
+    created_at = Column(DateTime, nullable=False)
 
 
 class DataService:
     def __init__(self):
-        self.data_dir = os.getenv("DATA_DIR", "data_dvc")
-        self.gcs_credentials = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-        self.graph = None
-        self.is_loaded = False
+        self.db_url = os.getenv("NEON_DB_URL")
+        self.engine = None
+        self.Session = None
         
-    def initialize_dvc(self) -> bool:
-        """Initialize DVC and check if data is available"""
+    def initialize(self) -> bool:
+        """Initialize database connection"""
         try:
-            # Check if DVC is initialized
-            if not os.path.exists(".dvc"):
-                logger.info("DVC not initialized. Run 'dvc init' first.")
+            if not self.db_url:
+                logger.error("NEON_DB_URL not set")
                 return False
             
-            # Check if data directory exists
-            if not os.path.exists(self.data_dir):
-                logger.info(f"Data directory {self.data_dir} not found. Pulling from DVC...")
-                # Try to pull data
-                result = subprocess.run(
-                    ["dvc", "pull"], 
-                    capture_output=True, 
-                    text=True
-                )
-                if result.returncode != 0:
-                    logger.error(f"DVC pull failed: {result.stderr}")
-                    return False
-                    
-            logger.info(f"✅ DVC initialized. Data available at: {self.data_dir}")
+            self.engine = create_engine(self.db_url)
+            Base.metadata.create_all(self.engine)
+            self.Session = sessionmaker(bind=self.engine)
+            
+            logger.info("✅ DataService initialized with Neon DB")
             return True
             
         except Exception as e:
-            logger.error(f"Error initializing DVC: {str(e)}")
+            logger.error(f"Error initializing DataService: {str(e)}")
             return False
     
-    def load_data(self, filename: str = None) -> bool:
-        """Load RDF data into memory (or specific file)"""
+    def get_model_data(self, model_id: str, limit: int = 100) -> List[Dict]:
+        """Get training data for a specific model"""
         try:
-            if not os.path.exists(self.data_dir):
-                logger.warning("Data directory not found. Using mock mode.")
-                return False
+            if not self.Session:
+                self.initialize()
             
-            self.graph = Graph()
+            session = self.Session()
+            data = session.query(ModelTrainingData).filter(
+                ModelTrainingData.model_id == model_id
+            ).limit(limit).all()
             
-            # If specific file requested
-            if filename:
-                file_path = os.path.join(self.data_dir, filename)
-                if not os.path.exists(file_path):
-                    logger.error(f"File not found: {file_path}")
-                    return False
-                    
-                logger.info(f"Loading {filename}...")
-                # Handle .bz2 files
-                if filename.endswith('.bz2'):
-                    import bz2
-                    with bz2.open(file_path, 'rt', encoding='utf-8', errors='ignore') as f:
-                        self.graph.parse(data=f.read(), format='turtle')
-                else:
-                    self.graph.parse(file_path, format='turtle')
-                    
-                logger.info(f"✅ Loaded {len(self.graph)} triples from {filename}")
-            else:
-                # Load all TTL files (limit for demo)
-                logger.info("Loading sample RDF data...")
-                files = list(Path(self.data_dir).glob("*.ttl"))[:2]  # Limit to 2 files for demo
-                
-                for file_path in files:
-                    logger.info(f"Loading {file_path.name}...")
-                    self.graph.parse(file_path, format='turtle')
-                    
-                logger.info(f"✅ Loaded {len(self.graph)} total triples")
+            result = []
+            for item in data:
+                result.append({
+                    "id": item.id,
+                    "model_id": item.model_id,
+                    "model_version": item.model_version,
+                    "claim": item.claim,
+                    "label": item.label,
+                    "evidence": item.evidence,
+                    "metadata": item.metadata,
+                    "created_at": item.created_at.isoformat() if item.created_at else None
+                })
             
-            self.is_loaded = True
-            return True
+            session.close()
+            return result
             
         except Exception as e:
-            logger.error(f"Error loading data: {str(e)}")
-            return False
-    
-    def get_entity_info(self, entity_name: str) -> Optional[Dict]:
-        """Get information about a DBpedia entity"""
-        if not self.is_loaded or not self.graph:
-            return None
-            
-        try:
-            # Construct the DBpedia URI
-            entity_uri = URIRef(f"http://dbpedia.org/resource/{entity_name}")
-            
-            # Get all triples where this entity is the subject
-            info = {
-                "uri": str(entity_uri),
-                "label": None,
-                "properties": [],
-                "types": []
-            }
-            
-            # Get label
-            for s, p, o in self.graph.triples((entity_uri, RDFS.label, None)):
-                if isinstance(o, Literal):
-                    info["label"] = str(o)
-                    break
-            
-            # Get types
-            for s, p, o in self.graph.triples((entity_uri, RDF.type, None)):
-                info["types"].append(str(o))
-            
-            # Get other properties (limit to avoid huge responses)
-            count = 0
-            for s, p, o in self.graph.triples((entity_uri, None, None)):
-                if count >= 20:  # Limit properties
-                    break
-                if p not in [RDFS.label, RDF.type]:
-                    info["properties"].append({
-                        "predicate": str(p),
-                        "object": str(o)
-                    })
-                    count += 1
-            
-            return info if (info["label"] or info["properties"]) else None
-            
-        except Exception as e:
-            logger.error(f"Error getting entity info: {str(e)}")
-            return None
-    
-    def search_entities(self, query: str, limit: int = 10) -> List[Dict]:
-        """Search for entities by label"""
-        if not self.is_loaded or not self.graph:
-            return []
-            
-        try:
-            results = []
-            query_lower = query.lower()
-            
-            # Search in labels
-            for s, p, o in self.graph.triples((None, RDFS.label, None)):
-                if isinstance(o, Literal):
-                    label = str(o)
-                    if query_lower in label.lower():
-                        results.append({
-                            "uri": str(s),
-                            "label": label,
-                            "match_score": 1.0 if label.lower() == query_lower else 0.5
-                        })
-                        
-                        if len(results) >= limit:
-                            break
-            
-            # Sort by match score
-            results.sort(key=lambda x: x["match_score"], reverse=True)
-            return results
-            
-        except Exception as e:
-            logger.error(f"Error searching entities: {str(e)}")
+            logger.error(f"Error getting model data: {str(e)}")
             return []
     
-    def get_available_files(self) -> List[Dict]:
-        """List available data files"""
+    def get_model_stats(self, model_id: str) -> Dict:
+        """Get statistics about training data for a model"""
         try:
-            if not os.path.exists(self.data_dir):
-                return []
+            if not self.Session:
+                self.initialize()
             
-            files = []
-            for file_path in Path(self.data_dir).glob("*"):
-                if file_path.is_file():
-                    size_mb = file_path.stat().st_size / (1024 * 1024)
-                    files.append({
-                        "name": file_path.name,
-                        "size_mb": round(size_mb, 2),
-                        "type": file_path.suffix[1:] if file_path.suffix else "unknown"
-                    })
+            session = self.Session()
             
-            return sorted(files, key=lambda x: x["name"])
+            total = session.query(ModelTrainingData).filter(
+                ModelTrainingData.model_id == model_id
+            ).count()
             
-        except Exception as e:
-            logger.error(f"Error listing files: {str(e)}")
-            return []
-    
-    def get_stats(self) -> Dict:
-        """Get statistics about loaded data"""
-        if not self.is_loaded or not self.graph:
-            return {
-                "loaded": False,
-                "triples": 0,
-                "entities": 0,
-                "message": "No data loaded"
-            }
-        
-        try:
-            # Count unique subjects (entities)
-            subjects = set(s for s, p, o in self.graph.triples((None, None, None)))
+            # Count by label
+            from sqlalchemy import func
+            label_counts = session.query(
+                ModelTrainingData.label,
+                func.count(ModelTrainingData.id)
+            ).filter(
+                ModelTrainingData.model_id == model_id
+            ).group_by(ModelTrainingData.label).all()
+            
+            session.close()
             
             return {
-                "loaded": True,
-                "triples": len(self.graph),
-                "entities": len(subjects),
-                "data_dir": self.data_dir
+                "model_id": model_id,
+                "total_samples": total,
+                "label_distribution": {label: count for label, count in label_counts}
             }
+            
         except Exception as e:
-            logger.error(f"Error getting stats: {str(e)}")
-            return {"loaded": False, "error": str(e)}
+            logger.error(f"Error getting model stats: {str(e)}")
+            return {}
+    
+    def search_claims(self, model_id: str, query: str, limit: int = 20) -> List[Dict]:
+        """Search claims in training data"""
+        try:
+            if not self.Session:
+                self.initialize()
+            
+            session = self.Session()
+            
+            # Simple text search (can be enhanced with full-text search)
+            data = session.query(ModelTrainingData).filter(
+                ModelTrainingData.model_id == model_id,
+                ModelTrainingData.claim.ilike(f"%{query}%")
+            ).limit(limit).all()
+            
+            result = []
+            for item in data:
+                result.append({
+                    "id": item.id,
+                    "claim": item.claim,
+                    "label": item.label,
+                    "evidence": item.evidence,
+                    "created_at": item.created_at.isoformat() if item.created_at else None
+                })
+            
+            session.close()
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error searching claims: {str(e)}")
+            return []
 
 
-# Global data service instance
-data_service: Optional[DataService] = None
+# Singleton instance
+_data_service = None
 
 
 def get_data_service() -> DataService:
-    """Get or create the global data service instance"""
-    global data_service
-    if data_service is None:
-        data_service = DataService()
-    return data_service
+    """Get or create singleton DataService instance"""
+    global _data_service
+    if _data_service is None:
+        _data_service = DataService()
+        _data_service.initialize()
+    return _data_service
