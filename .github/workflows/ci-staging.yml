@@ -67,8 +67,6 @@ jobs:
           tags: verigraph-api:test
           build-args: |
             BASE_IMAGE=ghcr.io/paulzaman/verigraph/verigraph-base:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Test Docker image
         run: |
