@@ -35,6 +35,7 @@ jobs:
       - name: Run tests
         env:
           TEST_MODE: "true"
+          NEON_DB_URL: ${{ secrets.NEON_DB_URL }}
         run: python -m pytest test_main.py -v --tb=short
 
       - name: Test summary
