@@ -6,7 +6,7 @@ Handles model training data queries from Neon DB
 import os
 import logging
 from typing import List, Dict, Optional
-from sqlalchemy import create_engine, Column, String, DateTime, JSON, Integer, Text
+from sqlalchemy import create_engine, Column, String, DateTime, JSON, Integer, Text, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
@@ -19,18 +19,31 @@ load_dotenv()
 Base = declarative_base()
 
 
-class ModelTrainingData(Base):
-    """Model training data stored in Neon DB"""
-    __tablename__ = 'model_training_data'
+class TrainingRun(Base):
+    """Training runs table - existing in Neon DB"""
+    __tablename__ = 'training_runs'
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    model_id = Column(String, nullable=False, index=True)  # Links to MLflow model
-    model_version = Column(String, nullable=False)
+    id = Column(Integer, primary_key=True)
+    model_id = Column(String, nullable=False, index=True)
+    model_version = Column(String)
+    run_name = Column(String)
+    started_at = Column(DateTime)
+    completed_at = Column(DateTime)
+    status = Column(String)
+    metrics = Column(JSON)
+    created_at = Column(DateTime)
+
+
+class TrainingData(Base):
+    """Training data table - existing in Neon DB"""
+    __tablename__ = 'training_data'
+    
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, nullable=False, index=True)  # Links to training_runs
     claim = Column(Text, nullable=False)
-    label = Column(String, nullable=False)  # SUPPORTED, REFUTED, NOT ENOUGH INFO
-    evidence = Column(JSON, nullable=True)  # List of evidence texts
-    metadata = Column(JSON, nullable=True)  # Additional metadata
-    created_at = Column(DateTime, nullable=False)
+    label = Column(String, nullable=False)
+    evidence = Column(JSON)
+    created_at = Column(DateTime)
 
 
 class DataService:
@@ -47,7 +60,8 @@ class DataService:
                 return False
             
             self.engine = create_engine(self.db_url)
-            Base.metadata.create_all(self.engine)
+            # Don't create tables, they already exist
+            # Base.metadata.create_all(self.engine)
             self.Session = sessionmaker(bind=self.engine)
             
             logger.info("✅ DataService initialized with Neon DB")
@@ -64,25 +78,29 @@ class DataService:
                 self.initialize()
             
             session = self.Session()
-            data = session.query(ModelTrainingData).filter(
-                ModelTrainingData.model_id == model_id
+            
+            # Join training_data with training_runs to get data for a specific model
+            results = session.query(TrainingData, TrainingRun).join(
+                TrainingRun, TrainingData.run_id == TrainingRun.id
+            ).filter(
+                TrainingRun.model_id == model_id
             ).limit(limit).all()
             
-            result = []
-            for item in data:
-                result.append({
-                    "id": item.id,
-                    "model_id": item.model_id,
-                    "model_version": item.model_version,
-                    "claim": item.claim,
-                    "label": item.label,
-                    "evidence": item.evidence,
-                    "metadata": item.metadata,
-                    "created_at": item.created_at.isoformat() if item.created_at else None
+            data = []
+            for training_data, training_run in results:
+                data.append({
+                    "id": training_data.id,
+                    "run_id": training_data.run_id,
+                    "model_id": training_run.model_id,
+                    "model_version": training_run.model_version,
+                    "claim": training_data.claim,
+                    "label": training_data.label,
+                    "evidence": training_data.evidence,
+                    "created_at": training_data.created_at.isoformat() if training_data.created_at else None
                 })
             
             session.close()
-            return result
+            return data
             
         except Exception as e:
             logger.error(f"Error getting model data: {str(e)}")
@@ -96,18 +114,23 @@ class DataService:
             
             session = self.Session()
             
-            total = session.query(ModelTrainingData).filter(
-                ModelTrainingData.model_id == model_id
+            # Get total count for this model
+            total = session.query(TrainingData).join(
+                TrainingRun, TrainingData.run_id == TrainingRun.id
+            ).filter(
+                TrainingRun.model_id == model_id
             ).count()
             
             # Count by label
             from sqlalchemy import func
             label_counts = session.query(
-                ModelTrainingData.label,
-                func.count(ModelTrainingData.id)
+                TrainingData.label,
+                func.count(TrainingData.id)
+            ).join(
+                TrainingRun, TrainingData.run_id == TrainingRun.id
             ).filter(
-                ModelTrainingData.model_id == model_id
-            ).group_by(ModelTrainingData.label).all()
+                TrainingRun.model_id == model_id
+            ).group_by(TrainingData.label).all()
             
             session.close()
             
@@ -129,24 +152,27 @@ class DataService:
             
             session = self.Session()
             
-            # Simple text search (can be enhanced with full-text search)
-            data = session.query(ModelTrainingData).filter(
-                ModelTrainingData.model_id == model_id,
-                ModelTrainingData.claim.ilike(f"%{query}%")
+            # Search claims for a specific model
+            results = session.query(TrainingData, TrainingRun).join(
+                TrainingRun, TrainingData.run_id == TrainingRun.id
+            ).filter(
+                TrainingRun.model_id == model_id,
+                TrainingData.claim.ilike(f"%{query}%")
             ).limit(limit).all()
             
-            result = []
-            for item in data:
-                result.append({
-                    "id": item.id,
-                    "claim": item.claim,
-                    "label": item.label,
-                    "evidence": item.evidence,
-                    "created_at": item.created_at.isoformat() if item.created_at else None
+            data = []
+            for training_data, training_run in results:
+                data.append({
+                    "id": training_data.id,
+                    "run_id": training_data.run_id,
+                    "claim": training_data.claim,
+                    "label": training_data.label,
+                    "evidence": training_data.evidence,
+                    "created_at": training_data.created_at.isoformat() if training_data.created_at else None
                 })
             
             session.close()
-            return result
+            return data
             
         except Exception as e:
             logger.error(f"Error searching claims: {str(e)}")
