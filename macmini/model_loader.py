@@ -97,33 +97,52 @@ class ModelLoader:
                 from transformers import AutoModelForSequenceClassification, AutoTokenizer
                 import torch
                 import time
+                import shutil
                 
                 # Use MLflow model URI format with version number (avoids deprecated stage-based API)
                 model_uri = f"models:/{self.model_name}/{model_version_num}"
-                logger.info(f"Downloading from: {model_uri} (stage: {self.model_stage})")
                 
-                # Download model artifacts with retry logic (DagHub can be slow/flaky)
-                max_retries = 3
-                retry_delay = 5
-                model_path = None
+                # Check cache first before downloading
+                model_cache_path = os.path.join(self.cache_dir, f"v{model_version_num}")
+                cache_exists = os.path.exists(os.path.join(model_cache_path, "model", "config.json"))
                 
-                for attempt in range(max_retries):
-                    try:
-                        logger.info(f"Download attempt {attempt + 1}/{max_retries}...")
-                        model_path = mlflow.artifacts.download_artifacts(model_uri)
-                        logger.info(f"✅ Artifacts downloaded to: {model_path}")
-                        break
-                    except Exception as download_error:
-                        if attempt < max_retries - 1:
-                            logger.warning(f"Download attempt {attempt + 1} failed: {str(download_error)}")
-                            logger.info(f"Retrying in {retry_delay} seconds...")
-                            time.sleep(retry_delay)
-                            retry_delay *= 2  # Exponential backoff
-                        else:
-                            raise Exception(f"Failed to download after {max_retries} attempts: {str(download_error)}")
-                
-                if not model_path:
-                    raise Exception("Model download failed - no path returned")
+                if cache_exists:
+                    logger.info(f"✨ Using cached model v{model_version_num} from: {model_cache_path}")
+                    model_path = model_cache_path
+                else:
+                    # Download model artifacts with retry logic (DagHub can be slow/flaky)
+                    logger.info(f"📥 Downloading from: {model_uri} (stage: {self.model_stage})")
+                    max_retries = 3
+                    retry_delay = 5
+                    downloaded_path = None
+                    
+                    for attempt in range(max_retries):
+                        try:
+                            logger.info(f"Download attempt {attempt + 1}/{max_retries}...")
+                            # MLflow downloads to its own cache and returns the path
+                            downloaded_path = mlflow.artifacts.download_artifacts(model_uri)
+                            logger.info(f"✅ Artifacts downloaded to: {downloaded_path}")
+                            break
+                        except Exception as download_error:
+                            if attempt < max_retries - 1:
+                                logger.warning(f"Download attempt {attempt + 1} failed: {str(download_error)}")
+                                logger.info(f"Retrying in {retry_delay} seconds...")
+                                time.sleep(retry_delay)
+                                retry_delay *= 2  # Exponential backoff
+                            else:
+                                raise Exception(f"Failed to download after {max_retries} attempts: {str(download_error)}")
+                    
+                    if not downloaded_path:
+                        raise Exception("Model download failed - no path returned")
+                    
+                    # Copy to our persistent cache for faster future loads
+                    logger.info(f"💾 Caching model to: {model_cache_path}")
+                    os.makedirs(os.path.dirname(model_cache_path), exist_ok=True)
+                    if os.path.exists(model_cache_path):
+                        shutil.rmtree(model_cache_path)
+                    shutil.copytree(downloaded_path, model_cache_path)
+                    model_path = model_cache_path
+                    logger.info(f"✅ Model cached for future use")
                 
                 # Check various possible structures
                 # MLflow transformers format can use components/ subdirectory
@@ -272,6 +291,7 @@ class ModelLoader:
                     model_path = os.path.join(downloaded_path, "model")
                     tokenizer_path = model_path  # Assume tokenizer is in same folder
                     logger.info("✓ Using standard model format")
+            
             
             # Load using the factcheck package
             logger.info(f"🔄 Loading model with factcheck package...")
