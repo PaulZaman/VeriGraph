@@ -4,17 +4,35 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# Set test mode and use SQLite in-memory database for tests
-os.environ["TEST_MODE"] = "true"
-os.environ["NEON_DB_URL"] = "sqlite:///:memory:"
+# Load .env for database URL
+from dotenv import load_dotenv
+load_dotenv()
 
 from main import app, Base
+import main
 
-# Create test database
-engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
-Base.metadata.create_all(bind=engine)
+# Create database engine using NEON_DB_URL from .env
+db_url = os.getenv("NEON_DB_URL")
+if not db_url:
+    raise ValueError("NEON_DB_URL must be set in .env file")
 
+engine = create_engine(db_url)
+SessionLocal = sessionmaker(bind=engine)
+
+# Initialize db_session before creating TestClient
+main.db_session = SessionLocal()
+
+# Create test client
 client = TestClient(app)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_db():
+    """Cleanup test data after all tests complete"""
+    yield
+    # Close the session after all tests
+    if main.db_session:
+        main.db_session.close()
 
 
 def test_root():
@@ -44,9 +62,6 @@ def test_verify_endpoint_creates_task():
     assert "task_id" in data
     assert "message" in data
     assert data["status"] == "success"
-    
-    # Save task_id for next test
-    return data["task_id"]
 
 
 def test_get_verification_task():
