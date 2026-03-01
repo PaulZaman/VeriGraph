@@ -38,7 +38,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}/verigraph-base
+          images: ghcr.io/paulzaman/verigraph/verigraph-base
           tags: |
             type=raw,value=latest
             type=sha
@@ -51,7 +51,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
+          cache-from: |
+            type=registry,ref=ghcr.io/paulzaman/verigraph/verigraph-base:latest
+            type=gha
           cache-to: type=gha,mode=max
 
       - name: Create summary
