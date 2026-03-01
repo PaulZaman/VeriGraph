@@ -5,9 +5,10 @@ pydantic==2.9.2
 python-dotenv==1.0.1
 requests==2.31.0
 
-# Data Management
-dvc[gs]==3.48.0
-google-cloud-storage==2.14.0
+# Database
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
 
-# RDF Parsing
-rdflib==7.0.0
+# Testing
+pytest==8.0.0
+httpx==0.26.0
