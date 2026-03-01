@@ -41,7 +41,7 @@ jobs:
           images: ghcr.io/${{ github.repository }}/verigraph-base
           tags: |
             type=raw,value=latest
-            type=sha,prefix={{branch}}-
+            type=sha
 
       - name: Build and push base image
         uses: docker/build-push-action@v5
