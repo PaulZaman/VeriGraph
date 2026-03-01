@@ -63,6 +63,7 @@ jobs:
         with:
           context: ./backend
           push: false
+          load: true
           tags: verigraph-api:production-test
           build-args: |
             BASE_IMAGE=ghcr.io/paulzaman/verigraph/verigraph-base:latest
