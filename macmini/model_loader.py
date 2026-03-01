@@ -98,9 +98,9 @@ class ModelLoader:
                 import torch
                 import time
                 
-                # Use MLflow model URI format with configured stage
-                model_uri = f"models:/{self.model_name}/{self.model_stage}"
-                logger.info(f"Downloading from: {model_uri}")
+                # Use MLflow model URI format with version number (avoids deprecated stage-based API)
+                model_uri = f"models:/{self.model_name}/{model_version_num}"
+                logger.info(f"Downloading from: {model_uri} (stage: {self.model_stage})")
                 
                 # Download model artifacts with retry logic (DagHub can be slow/flaky)
                 max_retries = 3
