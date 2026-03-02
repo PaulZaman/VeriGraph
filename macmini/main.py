@@ -176,6 +176,24 @@ class VeriGraphService:
             output = result.stdout.strip()
             logger.info(f"   Sortie brute: {output[:200]}...")
             
+            # Extraire le triplet extrait
+            # Format: "Extracted triplet: (subject, relation, object)"
+            triplet = None
+            triplet_lines = [line for line in output.split('\n') if 'Extracted triplet:' in line]
+            if triplet_lines:
+                triplet_line = triplet_lines[0]
+                # Parser "(subject, relation, object)"
+                if '(' in triplet_line and ')' in triplet_line:
+                    triplet_str = triplet_line.split('(')[1].split(')')[0]
+                    triplet_parts = [part.strip() for part in triplet_str.split(',')]
+                    if len(triplet_parts) == 3:
+                        triplet = {
+                            "subject": triplet_parts[0],
+                            "relation": triplet_parts[1],
+                            "object": triplet_parts[2]
+                        }
+                        logger.info(f"   Triplet extrait: ({triplet['subject']}, {triplet['relation']}, {triplet['object']})")
+            
             # Extraire la prédiction et le score
             # Chercher la ligne avec "Score: X.XXXX -> VERDICT"
             score_lines = [line for line in output.split('\n') if 'Score:' in line and '->' in line]
@@ -188,7 +206,11 @@ class VeriGraphService:
                 score = float(score_part)
                 label = parts[1].strip()
                 
-                return {
+                # Déterminer le nom du modèle et la version
+                model_name = f"fact-checker-gan_{environment}"
+                model_version = "v1" if environment == "staging" else "v2"
+                
+                result_data = {
                     "label": label,
                     "confidence": score,
                     "probabilities": {
@@ -196,8 +218,16 @@ class VeriGraphService:
                         "FAKE": 1 - score if label == "REAL" else score
                     },
                     "model": environment,
+                    "model_name": model_name,
+                    "model_version": model_version,
                     "raw_output": output
                 }
+                
+                # Ajouter le triplet s'il a été extrait
+                if triplet:
+                    result_data["triplet"] = triplet
+                
+                return result_data
             else:
                 raise Exception(f"Format de sortie invalide: {output}")
                 
