@@ -28,6 +28,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+try:
+    import dagshub
+    import mlflow
+    from mlflow.tracking import MlflowClient
+    MLFLOW_AVAILABLE = True
+except ImportError:
+    logger.warning("⚠️  MLflow/DagsHub non disponible - la surveillance des modèles sera désactivée")
+    MLFLOW_AVAILABLE = False
+
 # Configuration de la base de données
 Base = declarative_base()
 
@@ -56,6 +65,12 @@ class VeriGraphService:
         self.production_model_path = self.models_dir / "fact-checker-gan_production_v2" / "gan_model"
         self.poll_interval = 1  # 1 seconde
         self.max_retries = int(os.getenv("MAX_RETRIES", "3"))
+        self.model_check_interval = 5  # Vérifier les modèles toutes les 5 itérations
+        
+        # Tracking des versions de modèles actuellement utilisées
+        self.current_staging_version = None
+        self.current_production_version = None
+        self.mlflow_client = None
         
         # Configuration de la base de données
         self.db_url = os.getenv("NEON_DB_URL")
@@ -138,6 +153,83 @@ class VeriGraphService:
         logger.info("\n" + "=" * 80)
         logger.info("✅ TOUS LES MODÈLES SONT PRÊTS")
         logger.info("=" * 80)
+        
+        # Initialiser MLflow et récupérer les versions actuelles
+        if MLFLOW_AVAILABLE:
+            self.initialize_mlflow_tracking()
+    
+    def initialize_mlflow_tracking(self):
+        """Initialise la connexion MLflow et récupère les versions actuelles des modèles."""
+        try:
+            logger.info("\n🔗 Initialisation de la surveillance MLflow...")
+            dagshub_repo = "MarcoSrhl/NLP-Fact-checking"
+            dagshub.init(
+                repo_name=dagshub_repo.split('/')[1],
+                repo_owner=dagshub_repo.split('/')[0],
+                mlflow=True
+            )
+            self.mlflow_client = MlflowClient()
+            
+            # Récupérer les versions actuelles
+            self.current_staging_version = self.get_model_version("Staging")
+            self.current_production_version = self.get_model_version("Production")
+            
+            logger.info(f"✅ Surveillance MLflow activée")
+            logger.info(f"   Staging: Version {self.current_staging_version}")
+            logger.info(f"   Production: Version {self.current_production_version}")
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de l'initialisation MLflow: {e}")
+            self.mlflow_client = None
+    
+    def get_model_version(self, stage: str) -> str:
+        """Récupère la version actuelle d'un modèle depuis MLflow Registry."""
+        if not self.mlflow_client:
+            return None
+        
+        try:
+            versions = self.mlflow_client.search_model_versions(f"name='fact-checker-gan'")
+            target_versions = [v for v in versions if v.current_stage == stage]
+            
+            if target_versions:
+                version = sorted(target_versions, key=lambda v: int(v.version), reverse=True)[0]
+                return version.version
+            
+            return None
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la récupération de la version {stage}: {e}")
+            return None
+    
+    def check_model_updates(self):
+        """Vérifie si les modèles ont été mis à jour dans MLflow et les re-télécharge si nécessaire."""
+        if not self.mlflow_client:
+            return
+        
+        logger.info("\n🔍 Vérification des mises à jour des modèles sur MLflow...")
+        
+        try:
+            # Vérifier Staging
+            new_staging_version = self.get_model_version("Staging")
+            if new_staging_version and new_staging_version != self.current_staging_version:
+                logger.info(f"🔄 Nouveau modèle Staging détecté: v{self.current_staging_version} -> v{new_staging_version}")
+                if self.download_model("staging"):
+                    self.current_staging_version = new_staging_version
+                    logger.info(f"✅ Modèle Staging mis à jour vers v{new_staging_version}")
+            else:
+                logger.info(f"✓ Modèle Staging inchangé (v{self.current_staging_version})")
+            
+            # Vérifier Production
+            new_production_version = self.get_model_version("Production")
+            if new_production_version and new_production_version != self.current_production_version:
+                logger.info(f"🔄 Nouveau modèle Production détecté: v{self.current_production_version} -> v{new_production_version}")
+                if self.download_model("production"):
+                    self.current_production_version = new_production_version
+                    logger.info(f"✅ Modèle Production mis à jour vers v{new_production_version}")
+            else:
+                logger.info(f"✓ Modèle Production inchangé (v{self.current_production_version})")
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la vérification des mises à jour: {e}")
     
     def run_inference(self, claim: str, model_path: Path, environment: str) -> dict:
         """
@@ -325,6 +417,8 @@ class VeriGraphService:
         logger.info(f"📦 Modèle Production: {self.production_model_path}")
         logger.info(f"⏱️  Intervalle de polling: {self.poll_interval}s")
         logger.info(f"🔄 Max retries: {self.max_retries}")
+        if MLFLOW_AVAILABLE:
+            logger.info(f"🔍 Vérification des modèles MLflow: toutes les {self.model_check_interval} itérations")
         logger.info("=" * 80 + "\n")
         
         try:
@@ -332,6 +426,10 @@ class VeriGraphService:
             while True:
                 iteration += 1
                 logger.info(f"🔄 Iteration #{iteration} - {datetime.now().strftime('%H:%M:%S')}")
+                
+                # Vérifier les mises à jour de modèles toutes les N itérations
+                if MLFLOW_AVAILABLE and iteration % self.model_check_interval == 0:
+                    self.check_model_updates()
                 
                 self.poll_and_process()
                 
