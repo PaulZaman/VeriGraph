@@ -61,8 +61,6 @@ class VeriGraphService:
     def __init__(self):
         # Configuration
         self.models_dir = Path("./models")
-        self.staging_model_path = self.models_dir / "fact-checker-gan_staging_v1" / "gan_model"
-        self.production_model_path = self.models_dir / "fact-checker-gan_production_v2" / "gan_model"
         self.poll_interval = 1  # 1 seconde
         self.max_retries = int(os.getenv("MAX_RETRIES", "3"))
         self.model_check_interval = 5  # Vérifier les modèles toutes les 5 itérations
@@ -71,6 +69,10 @@ class VeriGraphService:
         self.current_staging_version = None
         self.current_production_version = None
         self.mlflow_client = None
+        
+        # Chemins dynamiques des modèles (mis à jour selon les versions)
+        self.staging_model_path = None
+        self.production_model_path = None
         
         # Configuration de la base de données
         self.db_url = os.getenv("NEON_DB_URL")
@@ -130,6 +132,14 @@ class VeriGraphService:
         logger.info("🔍 VÉRIFICATION DES MODÈLES")
         logger.info("=" * 80)
         
+        # Initialiser MLflow et récupérer les versions actuelles en premier
+        # Ceci définit les chemins des modèles basés sur les versions MLflow
+        if MLFLOW_AVAILABLE:
+            self.initialize_mlflow_tracking()
+        else:
+            logger.warning("⚠️  MLflow non disponible - impossible de déterminer les versions des modèles")
+            sys.exit(1)
+        
         # Vérifier Staging
         logger.info("\n📦 Vérification du modèle Staging...")
         if self.check_model_downloaded(self.staging_model_path):
@@ -153,10 +163,6 @@ class VeriGraphService:
         logger.info("\n" + "=" * 80)
         logger.info("✅ TOUS LES MODÈLES SONT PRÊTS")
         logger.info("=" * 80)
-        
-        # Initialiser MLflow et récupérer les versions actuelles
-        if MLFLOW_AVAILABLE:
-            self.initialize_mlflow_tracking()
     
     def initialize_mlflow_tracking(self):
         """Initialise la connexion MLflow et récupère les versions actuelles des modèles."""
@@ -173,6 +179,10 @@ class VeriGraphService:
             # Récupérer les versions actuelles
             self.current_staging_version = self.get_model_version("Staging")
             self.current_production_version = self.get_model_version("Production")
+            
+            # Mettre à jour les chemins avec les versions actuelles
+            self.update_model_path("staging", self.current_staging_version)
+            self.update_model_path("production", self.current_production_version)
             
             logger.info(f"✅ Surveillance MLflow activée")
             logger.info(f"   Staging: Version {self.current_staging_version}")
@@ -200,6 +210,30 @@ class VeriGraphService:
             logger.error(f"❌ Erreur lors de la récupération de la version {stage}: {e}")
             return None
     
+    def get_model_path(self, environment: str) -> Path:
+        """Retourne le chemin du modèle pour l'environnement spécifié."""
+        if environment.lower() == "staging":
+            return self.staging_model_path
+        elif environment.lower() == "production":
+            return self.production_model_path
+        else:
+            raise ValueError(f"Environment invalide: {environment}")
+    
+    def update_model_path(self, environment: str, version: str):
+        """Met à jour le chemin du modèle après un téléchargement ou une détection de version."""
+        if not version:
+            return
+        
+        environment_lower = environment.lower()
+        model_path = self.models_dir / f"fact-checker-gan_{environment_lower}_v{version}" / "gan_model"
+        
+        if environment_lower == "staging":
+            self.staging_model_path = model_path
+            logger.info(f"🔄 Chemin Staging mis à jour: {model_path}")
+        elif environment_lower == "production":
+            self.production_model_path = model_path
+            logger.info(f"🔄 Chemin Production mis à jour: {model_path}")
+    
     def check_model_updates(self):
         """Vérifie si les modèles ont été mis à jour dans MLflow et les re-télécharge si nécessaire."""
         if not self.mlflow_client:
@@ -214,6 +248,7 @@ class VeriGraphService:
                 logger.info(f"🔄 Nouveau modèle Staging détecté: v{self.current_staging_version} -> v{new_staging_version}")
                 if self.download_model("staging"):
                     self.current_staging_version = new_staging_version
+                    self.update_model_path("staging", new_staging_version)
                     logger.info(f"✅ Modèle Staging mis à jour vers v{new_staging_version}")
             else:
                 logger.info(f"✓ Modèle Staging inchangé (v{self.current_staging_version})")
@@ -224,6 +259,7 @@ class VeriGraphService:
                 logger.info(f"🔄 Nouveau modèle Production détecté: v{self.current_production_version} -> v{new_production_version}")
                 if self.download_model("production"):
                     self.current_production_version = new_production_version
+                    self.update_model_path("production", new_production_version)
                     logger.info(f"✅ Modèle Production mis à jour vers v{new_production_version}")
             else:
                 logger.info(f"✓ Modèle Production inchangé (v{self.current_production_version})")
@@ -350,11 +386,9 @@ class VeriGraphService:
             session.commit()
             
             # Sélectionner le modèle approprié
-            if task.environment.lower() == 'staging':
-                model_path = self.staging_model_path
-            elif task.environment.lower() == 'production':
-                model_path = self.production_model_path
-            else:
+            try:
+                model_path = self.get_model_path(task.environment)
+            except ValueError as e:
                 raise ValueError(f"Environment invalide: {task.environment}")
             
             # Exécuter l'inférence
