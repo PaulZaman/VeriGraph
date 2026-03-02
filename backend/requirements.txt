@@ -11,6 +11,7 @@ psycopg2-binary==2.9.9
 
 # MLflow (for model registry queries)
 mlflow==2.10.2
+dagshub==0.3.13
 
 # Testing
 pytest==8.0.0
