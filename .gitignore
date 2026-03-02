@@ -74,3 +74,6 @@ temp/
 
 # Model cache
 .model_cache/
+
+# MacMini models (GAN models are large, download from MLflow)
+macmini/models/
