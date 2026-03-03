@@ -20,7 +20,7 @@ import dagshub
 
 # Configuration
 DAGSHUB_REPO = os.getenv("DAGSHUB_REPO", "MarcoSrhl/NLP-Fact-checking")
-MODEL_NAME = os.getenv("MODEL_NAME", "fact-checker-gan")  # or fact-checker-bert
+MODEL_NAME = os.getenv("MODEL_NAME", "fact-checker-gan")
 DAGSHUB_USER = os.getenv("DAGSHUB_USER")
 DAGSHUB_TOKEN = os.getenv("DAGSHUB_TOKEN")
 
