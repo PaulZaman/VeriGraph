@@ -81,10 +81,10 @@ jobs:
       - name: Smoke tests
         if: github.event_name == 'push'
         run: |
-          echo "Waiting for deployment..."
+          echo "⏳ Waiting for deployment..."
           sleep 15
           
-          echo "Running smoke tests..."
+          echo "🧪 Running smoke tests..."
           curl -f https://verigraph-api-staging.fly.dev/health || exit 1
           echo "✓ Health check passed"
           
@@ -92,12 +92,79 @@ jobs:
           echo "✓ Root endpoint passed"
           
           echo "✅ All smoke tests passed!"
+      
+      # Log model readiness for promotion
+      - name: Check Model Promotion Readiness
+        if: github.event_name == 'push'
+        env:
+          DAGSHUB_REPO: ${{ secrets.DAGSHUB_REPO }}
+          DAGSHUB_USER: ${{ secrets.DAGSHUB_USER }}
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+          MODEL_NAME: "fact-checker-gan"
+        run: |
+          echo "📊 Checking if models in Staging meet quality gates..."
+          pip install mlflow dagshub
+          
+          # Create a check script inline
+          cat > check_staging.py << 'EOF'
+          import os
+          import mlflow
+          from mlflow.tracking import MlflowClient
+          import dagshub
+          
+          DAGSHUB_REPO = os.getenv("DAGSHUB_REPO")
+          MODEL_NAME = os.getenv("MODEL_NAME", "fact-checker-gan")
+          
+          # Setup
+          repo_owner, repo_name = DAGSHUB_REPO.split('/')
+          dagshub.init(repo_name=repo_name, repo_owner=repo_owner, mlflow=True)
+          
+          client = MlflowClient()
+          
+          # Get staging models
+          staging_versions = client.get_latest_versions(MODEL_NAME, stages=["Staging"])
+          
+          if staging_versions:
+              version = staging_versions[0]
+              run = client.get_run(version.run_id)
+              metrics = run.data.metrics
+              
+              print(f"\n📦 Staging Model: {MODEL_NAME} v{version.version}")
+              print(f"   Run ID: {version.run_id}")
+              print(f"\n📊 Metrics:")
+              
+              acc = metrics.get('test_accuracy', metrics.get('accuracy'))
+              f1 = metrics.get('test_f1', metrics.get('f1_score', metrics.get('f1')))
+              
+              if acc:
+                  status = "✅" if acc >= 0.75 else "⚠️"
+                  print(f"   {status} Accuracy: {acc:.4f} (threshold: 0.75)")
+              if f1:
+                  status = "✅" if f1 >= 0.70 else "⚠️"
+                  print(f"   {status} F1 Score: {f1:.4f} (threshold: 0.70)")
+              
+              # Check if ready for production
+              if acc and f1 and acc >= 0.75 and f1 >= 0.70:
+                  print(f"\n✅ Model ready for promotion to Production!")
+              else:
+                  print(f"\n⚠️  Model does not meet quality gates for Production")
+          else:
+              print(f"ℹ️  No model found in Staging")
+          EOF
+          
+          python check_staging.py || echo "⚠️  Could not check staging model"
 
       # Deployment summary
       - name: Create deployment summary
         if: github.event_name == 'push' && success()
         run: |
           echo "### 🚀 Backend Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment:** Staging" >> $GITHUB_STEP_SUMMARY
+          echo "- **URL:** https://verigraph-api-staging.fly.dev" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** ✅ Deployed & Tested" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Next Steps:** Model promotion to Production happens on merge to main branch" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Environment:** Staging" >> $GITHUB_STEP_SUMMARY
           echo "- **URL:** https://verigraph-api-staging.fly.dev" >> $GITHUB_STEP_SUMMARY

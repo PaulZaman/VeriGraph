@@ -137,8 +137,16 @@ async def get_verification(task_id: str):
             "verdict": task.result.get("label", "UNKNOWN"),
             "confidence": task.result.get("confidence", 0.0),
             "probabilities": task.result.get("probabilities", {}),
-            "mode": task.result.get("mode", "unknown")
+            "mode": task.result.get("mode", "unknown"),
+            "model": task.result.get("model", task.environment),
+            "model_name": task.result.get("model_name", f"fact-checker-gan_{task.environment}"),
+            "model_version": task.result.get("model_version", "unknown")
         })
+        
+        # Add triplet if available
+        if "triplet" in task.result:
+            response["triplet"] = task.result["triplet"]
+            
     elif task.status == 'failed':
         response["error"] = task.error
     
