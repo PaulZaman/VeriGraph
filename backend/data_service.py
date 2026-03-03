@@ -75,8 +75,8 @@ class DataService:
             logger.error(f"Error initializing DataService: {str(e)}")
             return False
     
-    def get_model_data(self, mlflow_run_id: str = None, model_name: str = None, limit: int = 100) -> List[Dict]:
-        """Get training data for a specific MLflow run or model name"""
+    def get_model_data(self, mlflow_run_id: str = None, model_name: str = None, offset: int = 0, limit: int = 100) -> List[Dict]:
+        """Get training data for a specific MLflow run or model name with pagination"""
         try:
             if not self.Session:
                 self.initialize()
@@ -91,7 +91,7 @@ class DataService:
             # Try to filter by mlflow_run_id first
             if mlflow_run_id:
                 query = query.filter(TrainingRun.mlflow_run_id == mlflow_run_id)
-                results = query.limit(limit).all()
+                results = query.offset(offset).limit(limit).all()
                 
                 # If no results with mlflow_run_id, fall back to model_name pattern
                 if not results and model_name:
@@ -99,12 +99,12 @@ class DataService:
                     query = session.query(TrainingData, TrainingRun).join(
                         TrainingRun, TrainingData.run_id == TrainingRun.run_id
                     ).filter(TrainingRun.model_name.ilike(f"%{model_name}%"))
-                    results = query.limit(limit).all()
+                    results = query.offset(offset).limit(limit).all()
             elif model_name:
                 query = query.filter(TrainingRun.model_name.ilike(f"%{model_name}%"))
-                results = query.limit(limit).all()
+                results = query.offset(offset).limit(limit).all()
             else:
-                results = query.limit(limit).all()
+                results = query.offset(offset).limit(limit).all()
             
             data = []
             for training_data, training_run in results:
@@ -190,8 +190,8 @@ class DataService:
             logger.error(f"Error getting model stats: {str(e)}")
             return {}
     
-    def search_claims(self, mlflow_run_id: str = None, model_name: str = None, query: str = "", limit: int = 20) -> List[Dict]:
-        """Search claims in training data for an MLflow run or model name"""
+    def search_claims(self, mlflow_run_id: str = None, model_name: str = None, query: str = "", offset: int = 0, limit: int = 20) -> List[Dict]:
+        """Search claims in training data for an MLflow run or model name with pagination"""
         try:
             if not self.Session:
                 self.initialize()
@@ -208,7 +208,7 @@ class DataService:
             # Try to filter by mlflow_run_id first
             if mlflow_run_id:
                 search_query = search_query.filter(TrainingRun.mlflow_run_id == mlflow_run_id)
-                results = search_query.limit(limit).all()
+                results = search_query.offset(offset).limit(limit).all()
                 
                 # If no results, fall back to model_name pattern
                 if not results and model_name:
@@ -219,12 +219,12 @@ class DataService:
                         TrainingData.claim.ilike(f"%{query}%"),
                         TrainingRun.model_name.ilike(f"%{model_name}%")
                     )
-                    results = search_query.limit(limit).all()
+                    results = search_query.offset(offset).limit(limit).all()
             elif model_name:
                 search_query = search_query.filter(TrainingRun.model_name.ilike(f"%{model_name}%"))
-                results = search_query.limit(limit).all()
+                results = search_query.offset(offset).limit(limit).all()
             else:
-                results = search_query.limit(limit).all()
+                results = search_query.offset(offset).limit(limit).all()
             
             data = []
             for training_data, training_run in results:
@@ -247,12 +247,16 @@ class DataService:
             logger.error(f"Error searching claims: {str(e)}")
             return []
     
-    def get_current_model_data(self) -> Dict:
+    def get_current_model_data(self, offset: int = 0, limit: int = 20) -> Dict:
         """
         Get training data for the currently active model based on MODEL_STAGE environment
         
+        Args:
+            offset: Number of records to skip (for pagination)
+            limit: Maximum number of records to return
+        
         Returns:
-            Dict with model_info, data, and stats for the current model
+            Dict with model_info, data, stats, and pagination info for the current model
         """
         try:
             # Import here to avoid circular dependency
@@ -270,25 +274,111 @@ class DataService:
                 }
             
             # model_info['model_id'] contains the MLflow run_id
-            # model_info['model_name'] contains the model name (e.g., "fact-checker-bert")
+            # model_info['model_name'] contains the model name (e.g., "fact-checker-gan")
             mlflow_run_id = model_info['model_id']
             model_name = model_info['model_name']
             
             # Get training data (with fallback to model name if mlflow_run_id not linked)
-            data = self.get_model_data(mlflow_run_id=mlflow_run_id, model_name=model_name, limit=1000)
+            data = self.get_model_data(mlflow_run_id=mlflow_run_id, model_name=model_name, offset=offset, limit=limit)
             
-            # Get stats (with fallback)
+            # Get stats (with fallback) - always get total stats, not paginated
             stats = self.get_model_stats(mlflow_run_id=mlflow_run_id, model_name=model_name)
+            
+            # Add pagination info
+            total_samples = stats.get('total_samples', 0)
             
             return {
                 "status": "success",
                 "model_info": model_info,
                 "data": data,
-                "stats": stats
+                "stats": stats,
+                "pagination": {
+                    "offset": offset,
+                    "limit": limit,
+                    "total": total_samples,
+                    "has_more": (offset + limit) < total_samples
+                }
             }
             
         except Exception as e:
             logger.error(f"Error getting current model data: {str(e)}")
+            return {
+                "status": "error",
+                "error": str(e)
+            }
+    
+    def search_current_model_data(self, query: str, offset: int = 0, limit: int = 20) -> Dict:
+        """
+        Search claims in the currently active model's training data
+        
+        Args:
+            query: Search query string
+            offset: Number of records to skip (for pagination)
+            limit: Maximum number of records to return
+        
+        Returns:
+            Dict with model_info, search results, and pagination info
+        """
+        try:
+            # Import here to avoid circular dependency
+            from mlflow_service import get_mlflow_service
+            
+            # Get current model info from MLflow
+            mlflow_service = get_mlflow_service()
+            model_info = mlflow_service.get_current_model_info()
+            
+            if not model_info:
+                logger.error("Could not get current model info from MLflow")
+                return {
+                    "status": "error",
+                    "error": "Could not retrieve current model information from MLflow"
+                }
+            
+            mlflow_run_id = model_info['model_id']
+            model_name = model_info['model_name']
+            
+            # Perform search
+            results = self.search_claims(
+                mlflow_run_id=mlflow_run_id,
+                model_name=model_name,
+                query=query,
+                offset=offset,
+                limit=limit
+            )
+            
+            # Get total count for pagination
+            # Need to count all matching results
+            if not self.Session:
+                self.initialize()
+            
+            session = self.Session()
+            count_query = session.query(TrainingData).join(
+                TrainingRun, TrainingData.run_id == TrainingRun.run_id
+            ).filter(
+                TrainingData.claim.ilike(f"%{query}%")
+            )
+            
+            if mlflow_run_id:
+                count_query = count_query.filter(TrainingRun.mlflow_run_id == mlflow_run_id)
+            
+            total_results = count_query.count()
+            session.close()
+            
+            return {
+                "status": "success",
+                "model_info": model_info,
+                "query": query,
+                "data": results,
+                "pagination": {
+                    "offset": offset,
+                    "limit": limit,
+                    "total": total_results,
+                    "has_more": (offset + limit) < total_results
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error searching current model data: {str(e)}")
             return {
                 "status": "error",
                 "error": str(e)
