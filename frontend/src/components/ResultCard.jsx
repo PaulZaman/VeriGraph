@@ -6,8 +6,10 @@ function ResultCard({ result, claim }) {
   const getVerdictIcon = (verdict) => {
     switch (verdict) {
       case 'SUPPORTED':
+      case 'REAL':
         return <CheckCircle className="w-16 h-16 text-green-500" />
       case 'REFUTED':
+      case 'FAKE':
         return <XCircle className="w-16 h-16 text-red-500" />
       case 'NOT ENOUGH INFO':
         return <HelpCircle className="w-16 h-16 text-yellow-500" />
@@ -19,8 +21,10 @@ function ResultCard({ result, claim }) {
   const getVerdictColor = (verdict) => {
     switch (verdict) {
       case 'SUPPORTED':
+      case 'REAL':
         return 'bg-green-50 border-green-200'
       case 'REFUTED':
+      case 'FAKE':
         return 'bg-red-50 border-red-200'
       case 'NOT ENOUGH INFO':
         return 'bg-yellow-50 border-yellow-200'
@@ -32,8 +36,10 @@ function ResultCard({ result, claim }) {
   const getVerdictTextColor = (verdict) => {
     switch (verdict) {
       case 'SUPPORTED':
+      case 'REAL':
         return 'text-green-800'
       case 'REFUTED':
+      case 'FAKE':
         return 'text-red-800'
       case 'NOT ENOUGH INFO':
         return 'text-yellow-800'
@@ -117,8 +123,8 @@ function ResultCard({ result, claim }) {
             <div className="w-full bg-gray-200 rounded-full h-3">
               <div
                 className={`h-3 rounded-full transition-all duration-500 ${
-                  verdict === 'SUPPORTED' ? 'bg-green-500' :
-                  verdict === 'REFUTED' ? 'bg-red-500' :
+                  verdict === 'SUPPORTED' || verdict === 'REAL' ? 'bg-green-500' :
+                  verdict === 'REFUTED' || verdict === 'FAKE' ? 'bg-red-500' :
                   'bg-yellow-500'
                 }`}
                 style={{ width: `${confidence * 100}%` }}
@@ -128,7 +134,7 @@ function ResultCard({ result, claim }) {
 
           {/* Probability Breakdown */}
           {Object.keys(probabilities).length > 0 && (
-            <div className="bg-white rounded-lg p-6">
+            <div className="bg-white rounded-lg p-6 mb-6">
               <h4 className="text-gray-700 font-semibold mb-4">Probability Breakdown</h4>
               <div className="space-y-3">
                 {Object.entries(probabilities).map(([label, prob]) => (
@@ -151,8 +157,68 @@ function ResultCard({ result, claim }) {
             </div>
           )}
 
-          {/* Mode indicator */}
-          {result.mode && (
+          {/* Extracted Triplet */}
+          {result.triplet && (
+            <div className="bg-white rounded-lg p-6 mb-6">
+              <h4 className="text-gray-700 font-semibold mb-3">Extracted Knowledge Triplet</h4>
+              <div className="flex items-center justify-center gap-3 text-center">
+                <div className="flex-1 bg-blue-50 rounded-lg p-3">
+                  <p className="text-xs text-gray-500 mb-1">Subject</p>
+                  <p className="text-sm font-semibold text-blue-900">{result.triplet.subject}</p>
+                </div>
+                <div className="flex-shrink-0">
+                  <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+                <div className="flex-1 bg-purple-50 rounded-lg p-3">
+                  <p className="text-xs text-gray-500 mb-1">Relation</p>
+                  <p className="text-sm font-semibold text-purple-900">{result.triplet.relation}</p>
+                </div>
+                <div className="flex-shrink-0">
+                  <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+                <div className="flex-1 bg-green-50 rounded-lg p-3">
+                  <p className="text-xs text-gray-500 mb-1">Object</p>
+                  <p className="text-sm font-semibold text-green-900">{result.triplet.object}</p>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 text-center mt-3">
+                The claim was analyzed as this knowledge graph triplet
+              </p>
+            </div>
+          )}
+
+          {/* Model Information */}
+          {(result.model_name || result.model_version || result.model) && (
+            <div className="bg-white rounded-lg p-4">
+              <div className="flex items-center justify-between text-xs text-gray-500">
+                {result.model_name && (
+                  <span className="flex items-center gap-1">
+                    <span className="font-semibold">Model:</span>
+                    <span>{result.model_name}</span>
+                  </span>
+                )}
+                {result.model_version && (
+                  <span className="flex items-center gap-1">
+                    <span className="font-semibold">Version:</span>
+                    <span>{result.model_version}</span>
+                  </span>
+                )}
+                {result.model && (
+                  <span className="flex items-center gap-1">
+                    <span className="font-semibold">Environment:</span>
+                    <span className="uppercase">{result.model}</span>
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Mode indicator (legacy) */}
+          {result.mode && !result.model_name && (
             <div className="mt-4 text-center">
               <span className="text-xs text-gray-500">
                 Mode: {result.mode.toUpperCase()}

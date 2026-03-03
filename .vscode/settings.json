@@ -2,5 +2,8 @@
     "python-envs.defaultEnvManager": "ms-python.python:system",
     "python.analysis.extraPaths": [
         "./backend"
-    ]
+    ],
+      "python.analysis.diagnosticSeverityOverrides": {
+    "reportMissingImports": "none"
+  }
 }

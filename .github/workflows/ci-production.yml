@@ -53,17 +53,36 @@ jobs:
           NEON_DB_URL: ${{ secrets.NEON_DB_URL }}
         run: python -m pytest test_main.py -v --tb=short
 
-      # Promote model from Staging to Production (only on push)
-      - name: Promote Model to Production
+      # Promote GAN model from Staging to Production with quality gates (only on push)
+      - name: Promote GAN Model to Production (with Quality Gates)
         if: github.event_name == 'push'
         env:
           DAGSHUB_REPO: ${{ secrets.DAGSHUB_REPO }}
           DAGSHUB_USER: ${{ secrets.DAGSHUB_USER }}
           DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
-          MODEL_NAME: ${{ secrets.MODEL_NAME }}
+          MODEL_NAME: "fact-checker-gan"
+          MIN_ACCURACY: "0.75"
+          MIN_F1_SCORE: "0.70"
         run: |
-          pip install mlflow
-          python promote_model.py
+          echo "🔍 Installing MLflow dependencies..."
+          pip install mlflow dagshub
+          echo ""
+          echo "🚀 Starting GAN model promotion with quality gates..."
+          python scripts/promote_with_quality_gate.py
+      
+      # Promote BERT model from Staging to Production with quality gates (only on push)
+      - name: Promote BERT Model to Production (with Quality Gates)
+        if: github.event_name == 'push'
+        env:
+          DAGSHUB_REPO: ${{ secrets.DAGSHUB_REPO }}
+          DAGSHUB_USER: ${{ secrets.DAGSHUB_USER }}
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+          MODEL_NAME: "fact-checker-bert"
+          MIN_ACCURACY: "0.75"
+          MIN_F1_SCORE: "0.70"
+        run: |
+          echo "🚀 Starting BERT model promotion with quality gates..."
+          python scripts/promote_with_quality_gate.py
 
       # Build and test Docker image inline
       - name: Build Docker image
