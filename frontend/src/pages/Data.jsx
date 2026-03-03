@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Database, Search, BarChart3, FileText, Loader2, AlertCircle, Network } from 'lucide-react'
+import { Database, Search, FileText, Loader2, AlertCircle, Network } from 'lucide-react'
 import { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState } from 'reactflow'
 import 'reactflow/dist/style.css'
 import Header from '../components/Header'
@@ -12,7 +12,7 @@ function Data() {
   const [searchResults, setSearchResults] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [activeTab, setActiveTab] = useState('overview')
+  const [activeTab, setActiveTab] = useState('data')
 
   // Graph state
   const [graphEntity, setGraphEntity] = useState('')
@@ -136,18 +136,6 @@ function Data() {
     })
   }, [])
 
-  const handleContextMenuSearch = useCallback(() => {
-    if (contextMenu?.node) {
-      const label = contextMenu.node.data.label
-      setGraphEntity(label)
-      setContextMenu(null)
-      // Trigger search
-      setTimeout(() => {
-        handleGraphSearch(null, label)
-      }, 100)
-    }
-  }, [contextMenu, handleGraphSearch])
-
   const handleGraphSearch = useCallback(async (e, entityOverride = null) => {
     if (e) e.preventDefault()
     const searchEntity = entityOverride || graphEntity
@@ -209,6 +197,18 @@ function Data() {
       setGraphLoading(false)
     }
   }, [API_URL, graphEntity, setNodes, setEdges])
+
+  const handleContextMenuSearch = useCallback(() => {
+    if (contextMenu?.node) {
+      const label = contextMenu.node.data.label
+      setGraphEntity(label)
+      setContextMenu(null)
+      // Trigger search
+      setTimeout(() => {
+        handleGraphSearch(null, label)
+      }, 100)
+    }
+  }, [contextMenu, handleGraphSearch])
 
   const getLabelColor = (label) => {
     switch (label?.toUpperCase()) {
@@ -292,17 +292,6 @@ function Data() {
               <div className="border-b border-gray-200">
                 <div className="flex">
                   <button
-                    onClick={() => setActiveTab('overview')}
-                    className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-                      activeTab === 'overview'
-                        ? 'border-blue-600 text-blue-600'
-                        : 'border-transparent text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    <BarChart3 className="w-4 h-4 inline mr-2" />
-                    Overview
-                  </button>
-                  <button
                     onClick={() => setActiveTab('data')}
                     className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
                       activeTab === 'data'
@@ -339,48 +328,6 @@ function Data() {
               </div>
 
               <div className="p-6">
-                {/* Overview Tab */}
-                {activeTab === 'overview' && (
-                  <div className="space-y-6">
-                    {stats && stats.label_distribution && (
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                          Label Distribution
-                        </h3>
-                        <div className="space-y-3">
-                          {Object.entries(stats.label_distribution).map(([label, count]) => (
-                            <div key={label}>
-                              <div className="flex justify-between items-center mb-1">
-                                <span className={`text-sm px-2 py-1 rounded ${getLabelColor(label)}`}>
-                                  {label}
-                                </span>
-                                <span className="text-sm text-gray-600">
-                                  {count} ({((count / stats.total_samples) * 100).toFixed(1)}%)
-                                </span>
-                              </div>
-                              <div className="w-full bg-gray-200 rounded-full h-2">
-                                <div
-                                  className="bg-blue-600 h-2 rounded-full transition-all"
-                                  style={{ width: `${(count / stats.total_samples) * 100}%` }}
-                                />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {modelInfo.description && (
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                          Description
-                        </h3>
-                        <p className="text-sm text-gray-600">{modelInfo.description}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
                 {/* Data Tab */}
                 {activeTab === 'data' && (
                   <div className="space-y-4">
