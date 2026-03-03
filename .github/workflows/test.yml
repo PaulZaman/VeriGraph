@@ -6,10 +6,11 @@ on:
       - dev
     paths:
       - 'backend/**'
+      - 'frontend/**'
       - '.github/workflows/test.yml'
 
 jobs:
-  test:
+  backend:
     name: Backend Tests
     runs-on: ubuntu-latest
     defaults:
@@ -53,4 +54,57 @@ jobs:
           echo "All backend tests passed successfully" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ API Tests" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Quality Gate Logic Tests" >> $GITHUB_STEP_SUMMARY
+
+  frontend:
+    name: Frontend Tests & Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Build production bundle
+        run: npm run build
+        env:
+          # Ensure build doesn't fail on warnings
+          CI: false
+
+      - name: Check build output
+        run: |
+          echo "✅ Checking build artifacts..."
+          if [ -d "dist" ]; then
+            echo "✓ dist/ directory created"
+            echo "✓ Build output size: $(du -sh dist | cut -f1)"
+            ls -lh dist/
+          else
+            echo "❌ dist/ directory not found"
+            exit 1
+          fi
+
+      - name: Test summary
+        if: success()
+        run: |
+          echo "### ✅ Frontend Checks Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All frontend checks completed successfully" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Dependencies Installed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Linting Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Production Build Successful" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Build Artifacts Validated" >> $GITHUB_STEP_SUMMARY
 
