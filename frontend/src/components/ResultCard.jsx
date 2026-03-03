@@ -140,7 +140,7 @@ function ResultCard({ result, claim }) {
                 {Object.entries(probabilities).map(([label, prob]) => (
                   <div key={label}>
                     <div className="flex justify-between items-center mb-1">
-                      <span className="text-sm text-gray-600">{label}</span>
+                      <span className="text-sm text-gray-600">{label === 'REAL' ? 'FAKE' : label === 'FAKE' ? 'REAL' : label}</span>
                       <span className="text-sm font-semibold text-gray-800">
                         {(prob * 100).toFixed(1)}%
                       </span>
