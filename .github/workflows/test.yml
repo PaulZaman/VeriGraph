@@ -37,6 +37,13 @@ jobs:
           TEST_MODE: "true"
           NEON_DB_URL: ${{ secrets.NEON_DB_URL }}
         run: python -m pytest test_main.py -v --tb=short
+      
+      # Test quality gate logic
+      - name: Test Model Promotion Quality Gates
+        run: |
+          echo "🧪 Testing quality gate validation logic..."
+          pip install mlflow dagshub
+          python scripts/test_quality_gates.py
 
       - name: Test summary
         if: success()
@@ -44,4 +51,6 @@ jobs:
           echo "### ✅ Tests Passed" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "All backend tests passed successfully" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ API Tests" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Quality Gate Logic Tests" >> $GITHUB_STEP_SUMMARY
 

@@ -1,14 +1,16 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import os
 import uuid
+import requests
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from sqlalchemy import create_engine, Column, String, DateTime, JSON, Integer
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from data_service import get_data_service
 
 # Load environment variables
 load_dotenv()
@@ -135,9 +137,264 @@ async def get_verification(task_id: str):
             "verdict": task.result.get("label", "UNKNOWN"),
             "confidence": task.result.get("confidence", 0.0),
             "probabilities": task.result.get("probabilities", {}),
-            "mode": task.result.get("mode", "unknown")
+            "mode": task.result.get("mode", "unknown"),
+            "model": task.result.get("model", task.environment),
+            "model_name": task.result.get("model_name", f"fact-checker-gan_{task.environment}"),
+            "model_version": task.result.get("model_version", "unknown")
         })
+        
+        # Add triplet if available
+        if "triplet" in task.result:
+            response["triplet"] = task.result["triplet"]
+            
     elif task.status == 'failed':
         response["error"] = task.error
     
     return response
+
+
+# ==============================================================================
+# Data Viewing Endpoints
+# ==============================================================================
+
+@app.get("/data/runs")
+async def list_training_runs():
+    """List all training runs with their models and data counts"""
+    service = get_data_service()
+    runs = service.list_training_runs()
+    
+    return {
+        "status": "success",
+        "count": len(runs),
+        "runs": runs
+    }
+
+
+@app.get("/data/model/{model_id}")
+async def get_model_training_data(
+    model_id: str,
+    limit: int = Query(100, ge=1, le=1000, description="Maximum results")
+):
+    """Get training data for a specific model"""
+    service = get_data_service()
+    data = service.get_model_data(model_id, limit)
+    
+    return {
+        "status": "success",
+        "model_id": model_id,
+        "count": len(data),
+        "data": data
+    }
+
+
+@app.get("/data/model/{model_id}/stats")
+async def get_model_data_stats(model_id: str):
+    """Get statistics about training data for a model"""
+    service = get_data_service()
+    stats = service.get_model_stats(model_id)
+    
+    if not stats:
+        return {
+            "status": "error",
+            "message": f"No data found for model {model_id}"
+        }
+    
+    return {
+        "status": "success",
+        **stats
+    }
+
+
+@app.get("/data/model/{model_id}/search")
+async def search_model_claims(
+    model_id: str,
+    q: str = Query(..., description="Search query"),
+    limit: int = Query(20, ge=1, le=100, description="Maximum results")
+):
+    """Search claims in model training data"""
+    service = get_data_service()
+    results = service.search_claims(model_id, q, limit)
+    
+    return {
+        "status": "success",
+        "model_id": model_id,
+        "query": q,
+        "count": len(results),
+        "results": results
+    }
+
+
+@app.get("/data")
+async def get_current_model_training_data():
+    """
+    Get training data for the currently active model based on MODEL_STAGE environment.
+    Automatically determines which model to show based on Staging/Production stage.
+    """
+    service = get_data_service()
+    result = service.get_current_model_data()
+    
+    return result
+
+
+@app.get("/graph/entity/{entity}")
+async def get_entity_graph(
+    entity: str,
+    depth: int = Query(1, ge=1, le=2, description="Graph depth (1 or 2 hops)")
+):
+    """
+    Query DBpedia for entity relationships and return graph data.
+    Entity should be a DBpedia resource name (e.g., 'Paris', 'France', 'Barack_Obama')
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Clean entity name - replace spaces with underscores
+        entity_clean = entity.replace(" ", "_")
+        entity_uri = f"http://dbpedia.org/resource/{entity_clean}"
+        
+        logger.info(f"Querying DBpedia for entity: {entity_clean}")
+        
+        # Simplified SPARQL query - get outgoing relationships only
+        # Keep it simple to avoid timeouts
+        sparql_query = f"""
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX dbo: <http://dbpedia.org/ontology/>
+        PREFIX dbp: <http://dbpedia.org/property/>
+        
+        SELECT DISTINCT ?predicate ?object ?objectLabel
+        WHERE {{
+          <{entity_uri}> ?predicate ?object .
+          OPTIONAL {{ ?object rdfs:label ?objectLabel . FILTER(LANG(?objectLabel) = "en") }}
+          FILTER(isIRI(?object) && STRSTARTS(STR(?object), "http://dbpedia.org/resource/"))
+          FILTER(!STRSTARTS(STR(?object), "http://dbpedia.org/resource/Template:"))
+          FILTER(!STRSTARTS(STR(?object), "http://dbpedia.org/resource/Category:"))
+          FILTER(!STRSTARTS(STR(?object), "http://dbpedia.org/resource/File:"))
+          FILTER(
+            (STRSTARTS(STR(?predicate), "http://dbpedia.org/ontology/") || 
+             STRSTARTS(STR(?predicate), "http://dbpedia.org/property/")) &&
+            ?predicate != dbo:wikiPageWikiLink &&
+            ?predicate != dbo:wikiPageUsesTemplate &&
+            ?predicate != dbo:wikiPageExternalLink &&
+            ?predicate != dbo:wikiPageID &&
+            ?predicate != dbo:wikiPageRevisionID &&
+            ?predicate != dbo:thumbnail
+          )
+        }}
+        LIMIT 100
+        """
+        
+        # Query DBpedia SPARQL endpoint with longer timeout
+        sparql_endpoint = "https://dbpedia.org/sparql"
+        headers = {
+            "Accept": "application/sparql-results+json",
+            "User-Agent": "VeriGraph/1.0"
+        }
+        params = {
+            "query": sparql_query,
+            "format": "json"
+        }
+        
+        logger.info("Sending request to DBpedia...")
+        response = requests.get(sparql_endpoint, params=params, headers=headers, timeout=20)
+        
+        logger.info(f"DBpedia response status: {response.status_code}")
+        
+        if response.status_code != 200:
+            logger.error(f"DBpedia error: {response.text[:200]}")
+            raise HTTPException(status_code=500, detail=f"DBpedia query failed with status {response.status_code}")
+        
+        results = response.json()
+        logger.info(f"Got {len(results.get('results', {}).get('bindings', []))} results from DBpedia")
+        
+        # Parse results into nodes and edges
+        nodes = {}
+        edges = []
+        filtered_count = {"template": 0, "category": 0, "file": 0, "wikipage": 0, "kept": 0}
+        
+        # Add center node
+        nodes[entity_uri] = {
+            "id": entity_uri,
+            "label": entity_clean.replace("_", " "),
+            "type": "center"
+        }
+        
+        for binding in results.get("results", {}).get("bindings", []):
+            object_uri = binding.get("object", {}).get("value", "")
+            predicate = binding.get("predicate", {}).get("value", "")
+            object_label = binding.get("objectLabel", {}).get("value", "")
+            
+            # Skip if not a valid DBpedia resource
+            if not object_uri or not object_uri.startswith("http://dbpedia.org/resource/"):
+                continue
+            
+            # Skip templates, categories, and files
+            if "/Template:" in object_uri:
+                filtered_count["template"] += 1
+                continue
+            if "/Category:" in object_uri:
+                filtered_count["category"] += 1
+                continue
+            if "/File:" in object_uri:
+                filtered_count["file"] += 1
+                continue
+            
+            # WHITELIST: Only accept predicates from ontology or property namespaces
+            # This filters out most Wikipedia metadata
+            if not (predicate.startswith("http://dbpedia.org/ontology/") or 
+                    predicate.startswith("http://dbpedia.org/property/")):
+                filtered_count["wikipage"] += 1
+                continue
+            
+            # Blacklist specific metadata predicates even if they're in dbo: namespace
+            predicate_name = predicate.split("/")[-1]
+            if predicate_name in ["wikiPageWikiLink", "wikiPageUsesTemplate", "wikiPageExternalLink", 
+                                   "wikiPageID", "wikiPageRevisionID", "thumbnail"]:
+                filtered_count["wikipage"] += 1
+                continue
+            
+            filtered_count["kept"] += 1
+            
+            if not object_label:
+                object_label = object_uri.split("/")[-1].replace("_", " ")
+            
+            # Add node
+            nodes[object_uri] = {
+                "id": object_uri,
+                "label": object_label,
+                "type": "entity"
+            }
+            
+            # Add edge (all outgoing from center)
+            predicate_label = predicate.split("/")[-1].replace("_", " ")
+            edges.append({
+                "source": entity_uri,
+                "target": object_uri,
+                "label": predicate_label,
+                "type": "relationship"
+            })
+        
+        logger.info(f"Filtered: {filtered_count}")
+        logger.info(f"Returning {len(nodes)} nodes and {len(edges)} edges")
+        
+        return {
+            "status": "success",
+            "entity": entity,
+            "nodes": list(nodes.values()),
+            "edges": edges,
+            "count": {
+                "nodes": len(nodes),
+                "edges": len(edges)
+            }
+        }
+        
+    except requests.Timeout:
+        logger.error("DBpedia query timeout")
+        raise HTTPException(status_code=504, detail="DBpedia query timeout - try a simpler entity")
+    except requests.RequestException as e:
+        logger.error(f"Request error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Network error: {str(e)}")
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error querying DBpedia: {str(e)}")
+
