@@ -251,6 +251,11 @@ jobs:
                   print(f"   Run ID: {version.run_id}")
                   print(f"\n   Metrics:")
                   
+                  # If no metrics found, skip this model (not properly trained)
+                  if not acc and not f1:
+                      print(f"   ⚠️  No metrics found - skipping (model not properly trained)")
+                      continue
+                  
                   if acc:
                       status = "✅" if acc >= 0.75 else "❌"
                       print(f"   {status} Accuracy: {acc:.4f} (threshold: ≥0.75)")
