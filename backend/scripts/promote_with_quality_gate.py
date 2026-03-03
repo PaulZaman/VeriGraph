@@ -51,13 +51,16 @@ def setup_mlflow():
     # Configure DagHub token to skip OAuth
     os.environ["DAGSHUB_USER_TOKEN"] = DAGSHUB_TOKEN
     
-    # Initialize DagHub (will use token from env var)
-    repo_owner, repo_name = DAGSHUB_REPO.split('/')
-    try:
-        dagshub.init(repo_name=repo_name, repo_owner=repo_owner, mlflow=True)
-    except Exception as e:
-        # If dagshub.init fails, continue with mlflow directly (token auth is already set)
-        print(f"⚠️  DagHub init warning (continuing with MLflow): {e}")
+    # Skip DagHub init in CI environments (GitHub Actions sets CI=true)
+    # DagHub init can trigger OAuth flow which hangs in automated pipelines
+    if not os.getenv("CI"):
+        repo_owner, repo_name = DAGSHUB_REPO.split('/')
+        try:
+            dagshub.init(repo_name=repo_name, repo_owner=repo_owner, mlflow=True)
+        except Exception as e:
+            print(f"⚠️  DagHub init warning (continuing with MLflow): {e}")
+    else:
+        print("ℹ️  Skipping dagshub.init() in CI environment (using MLflow directly)")
     
     mlflow.set_tracking_uri(tracking_uri)
     
