@@ -69,20 +69,6 @@ jobs:
           echo ""
           echo "🚀 Starting GAN model promotion with quality gates..."
           python scripts/promote_with_quality_gate.py
-      
-      # Promote BERT model from Staging to Production with quality gates (only on push)
-      - name: Promote BERT Model to Production (with Quality Gates)
-        if: github.event_name == 'push'
-        env:
-          DAGSHUB_REPO: ${{ secrets.DAGSHUB_REPO }}
-          DAGSHUB_USER: ${{ secrets.DAGSHUB_USER }}
-          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
-          MODEL_NAME: "fact-checker-bert"
-          MIN_ACCURACY: "0.75"
-          MIN_F1_SCORE: "0.70"
-        run: |
-          echo "🚀 Starting BERT model promotion with quality gates..."
-          python scripts/promote_with_quality_gate.py
 
       # Build and test Docker image inline
       - name: Build Docker image
