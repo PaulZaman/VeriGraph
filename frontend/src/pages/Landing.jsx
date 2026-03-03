@@ -5,11 +5,8 @@ import ResultCard from '../components/ResultCard'
 
 function Landing() {
   const [searchQuery, setSearchQuery] = useState('')
-  const [apiStatus, setApiStatus] = useState('')
-  const [apiConnected, setApiConnected] = useState(null)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
-  const [taskId, setTaskId] = useState(null)
   const pollingIntervalRef = useRef(null)
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
