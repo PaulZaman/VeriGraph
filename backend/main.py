@@ -15,6 +15,9 @@ from data_service import get_data_service
 # Load environment variables
 load_dotenv()
 
+
+
+
 # Database setup
 Base = declarative_base()
 
