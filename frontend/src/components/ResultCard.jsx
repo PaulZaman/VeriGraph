@@ -133,7 +133,7 @@ function ResultCard({ result, claim }) {
           </div>
 
           {/* Probability Breakdown */}
-          {Object.keys(probabilities).length > 0 && (
+          {/* {Object.keys(probabilities).length > 0 && (
             <div className="bg-white rounded-lg p-6 mb-6">
               <h4 className="text-gray-700 font-semibold mb-4">Probability Breakdown</h4>
               <div className="space-y-3">
@@ -156,7 +156,7 @@ function ResultCard({ result, claim }) {
               </div>
             </div>
           )}
-
+ */}
           {/* Extracted Triplet */}
           {result.triplet && (
             <div className="bg-white rounded-lg p-6 mb-6">
