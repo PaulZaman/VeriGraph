@@ -228,13 +228,33 @@ async def search_model_claims(
 
 
 @app.get("/data")
-async def get_current_model_training_data():
+async def get_current_model_training_data(
+    offset: int = Query(0, ge=0, description="Number of items to skip"),
+    limit: int = Query(20, ge=1, le=100, description="Number of items to return")
+):
     """
     Get training data for the currently active model based on MODEL_STAGE environment.
     Automatically determines which model to show based on Staging/Production stage.
+    Supports pagination via offset and limit.
     """
     service = get_data_service()
-    result = service.get_current_model_data()
+    result = service.get_current_model_data(offset=offset, limit=limit)
+    
+    return result
+
+
+@app.get("/data/search")
+async def search_current_model_data(
+    q: str = Query(..., description="Search query"),
+    offset: int = Query(0, ge=0, description="Number of items to skip"),
+    limit: int = Query(20, ge=1, le=100, description="Number of items to return")
+):
+    """
+    Search claims in the currently active model's training data.
+    Supports pagination via offset and limit.
+    """
+    service = get_data_service()
+    result = service.search_current_model_data(query=q, offset=offset, limit=limit)
     
     return result
 
