@@ -42,15 +42,23 @@ def setup_mlflow():
     print(f"📍 Repository: {DAGSHUB_REPO}")
     print(f"👤 User: {DAGSHUB_USER}")
     
-    # Initialize DagHub
-    repo_owner, repo_name = DAGSHUB_REPO.split('/')
-    dagshub.init(repo_name=repo_name, repo_owner=repo_owner, mlflow=True)
-    
-    # Set authentication
+    # Set authentication BEFORE initializing DagHub to avoid OAuth flow
     tracking_uri = f"https://dagshub.com/{DAGSHUB_REPO}.mlflow"
     os.environ["MLFLOW_TRACKING_URI"] = tracking_uri
     os.environ["MLFLOW_TRACKING_USERNAME"] = DAGSHUB_USER
     os.environ["MLFLOW_TRACKING_PASSWORD"] = DAGSHUB_TOKEN
+    
+    # Configure DagHub token to skip OAuth
+    os.environ["DAGSHUB_USER_TOKEN"] = DAGSHUB_TOKEN
+    
+    # Initialize DagHub (will use token from env var)
+    repo_owner, repo_name = DAGSHUB_REPO.split('/')
+    try:
+        dagshub.init(repo_name=repo_name, repo_owner=repo_owner, mlflow=True)
+    except Exception as e:
+        # If dagshub.init fails, continue with mlflow directly (token auth is already set)
+        print(f"⚠️  DagHub init warning (continuing with MLflow): {e}")
+    
     mlflow.set_tracking_uri(tracking_uri)
     
     print(f"✅ MLflow tracking configured")
