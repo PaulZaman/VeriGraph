@@ -35,9 +35,10 @@ function Data() {
   // Fetch current model data on mount
   useEffect(() => {
     fetchCurrentModelData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const fetchCurrentModelData = async () => {
+  const fetchCurrentModelData = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -57,7 +58,7 @@ function Data() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [API_URL])
 
   const handleSearch = async (e) => {
     e.preventDefault()
@@ -94,7 +95,7 @@ function Data() {
     // Separate center from other nodes
     const otherNodes = nodes.filter(n => n.id !== centerNode?.id)
     
-    const layoutedNodes = nodes.map((node, index) => {
+    const layoutedNodes = nodes.map((node) => {
       if (node.id === centerNode?.id) {
         // Place center node in the middle
         return {
@@ -145,9 +146,9 @@ function Data() {
         handleGraphSearch(null, label)
       }, 100)
     }
-  }, [contextMenu])
+  }, [contextMenu, handleGraphSearch])
 
-  const handleGraphSearch = async (e, entityOverride = null) => {
+  const handleGraphSearch = useCallback(async (e, entityOverride = null) => {
     if (e) e.preventDefault()
     const searchEntity = entityOverride || graphEntity
     if (!searchEntity.trim()) return
@@ -207,7 +208,7 @@ function Data() {
     } finally {
       setGraphLoading(false)
     }
-  }
+  }, [API_URL, graphEntity, setNodes, setEdges])
 
   const getLabelColor = (label) => {
     switch (label?.toUpperCase()) {
