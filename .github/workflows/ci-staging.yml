@@ -172,6 +172,7 @@ jobs:
 
   frontend:
     name: Frontend Tests & Build
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -249,10 +250,10 @@ jobs:
       - name: Build Docker image
         run: docker build -t verigraph-api:staging .
 
-      - name: Deploy to Fly.io Staging
+      - name: Setup Fly.io CLI
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Deploy
+      - name: Deploy to Fly.io
         run: flyctl deploy --config fly.staging.toml --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
@@ -271,135 +272,12 @@ jobs:
           
           echo "✅ All smoke tests passed!"
 
-      - name: Promote models to Staging
-        env:
-          DAGSHUB_REPO: ${{ secrets.DAGSHUB_REPO }}
-          DAGSHUB_USER: ${{ secrets.DAGSHUB_USER }}
-          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
-        run: |
-          echo "🚀 Promoting models to Staging with quality gates..."
-          pip install mlflow dagshub
-          
-          cat > promote_to_staging.py << 'EOF'
-          import os
-          import mlflow
-          from mlflow.tracking import MlflowClient
-          
-          DAGSHUB_REPO = os.getenv("DAGSHUB_REPO")
-          DAGSHUB_USER = os.getenv("DAGSHUB_USER")
-          DAGSHUB_TOKEN = os.getenv("DAGSHUB_TOKEN")
-          
-          tracking_uri = f"https://dagshub.com/{DAGSHUB_REPO}.mlflow"
-          os.environ["MLFLOW_TRACKING_URI"] = tracking_uri
-          os.environ["MLFLOW_TRACKING_USERNAME"] = DAGSHUB_USER
-          os.environ["MLFLOW_TRACKING_PASSWORD"] = DAGSHUB_TOKEN
-          os.environ["DAGSHUB_USER_TOKEN"] = DAGSHUB_TOKEN
-          
-          mlflow.set_tracking_uri(tracking_uri)
-          client = MlflowClient()
-          
-          models_to_promote = ["fact-checker-gan"]
-          promotion_successful = True
-          
-          for model_name in models_to_promote:
-              print(f"\n{'='*60}")
-              print(f"📦 Processing: {model_name}")
-              print('='*60)
-              
-              try:
-                  all_versions = client.search_model_versions(f"name='{model_name}'")
-                  none_versions = [v for v in all_versions if v.current_stage == "None"]
-                  
-                  if not none_versions:
-                      print(f"ℹ️  No new versions to promote (keeping existing Staging)")
-                      continue
-                  
-                  none_versions.sort(key=lambda x: int(x.version), reverse=True)
-                  latest = none_versions[0]
-                  
-                  run = client.get_run(latest.run_id)
-                  metrics = run.data.metrics
-                  
-                  acc = metrics.get('test_accuracy', metrics.get('accuracy'))
-                  f1 = metrics.get('test_f1', metrics.get('f1_score', metrics.get('f1')))
-                  
-                  print(f"\n📊 Candidate Version: v{latest.version}")
-                  print(f"   Run ID: {latest.run_id}")
-                  print(f"\n   Metrics:")
-                  
-                  passes_gates = True
-                  
-                  if acc:
-                      status = "✅" if acc >= 0.75 else "❌"
-                      print(f"   {status} Accuracy: {acc:.4f} (threshold: ≥0.75)")
-                      if acc < 0.75:
-                          passes_gates = False
-                  else:
-                      print(f"   ❌ Accuracy metric not found")
-                      passes_gates = False
-                  
-                  if f1:
-                      status = "✅" if f1 >= 0.70 else "❌"
-                      print(f"   {status} F1 Score: {f1:.4f} (threshold: ≥0.70)")
-                      if f1 < 0.70:
-                          passes_gates = False
-                  else:
-                      print(f"   ❌ F1 Score metric not found")
-                      passes_gates = False
-                  
-                  if passes_gates:
-                      print(f"\n✅ Quality gates passed! Promoting to Staging...")
-                      
-                      old_staging = client.get_latest_versions(model_name, stages=["Staging"])
-                      for old_ver in old_staging:
-                          client.transition_model_version_stage(
-                              name=model_name,
-                              version=old_ver.version,
-                              stage="Archived",
-                              archive_existing_versions=False
-                          )
-                          print(f"   📦 Archived old version: v{old_ver.version}")
-                      
-                      client.transition_model_version_stage(
-                          name=model_name,
-                          version=latest.version,
-                          stage="Staging",
-                          archive_existing_versions=False
-                      )
-                      
-                      print(f"   🎉 Successfully promoted v{latest.version} to Staging!")
-                  else:
-                      print(f"\n❌ Quality gates failed! NOT promoting to Staging")
-                      print(f"   Keeping existing Staging version")
-                      promotion_successful = False
-                      
-              except Exception as e:
-                  print(f"❌ Error promoting {model_name}: {e}")
-                  promotion_successful = False
-          
-          print(f"\n{'='*60}")
-          if promotion_successful:
-              print("✅ All model promotions completed successfully!")
-          else:
-              print("⚠️  Some models failed promotion (check logs above)")
-              print("    Existing Staging models remain unchanged")
-          print('='*60)
-          EOF
-          
-          python promote_to_staging.py
-
       - name: Deployment summary
         if: success()
         run: |
           echo "### 🚀 Staging Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "#### Backend" >> $GITHUB_STEP_SUMMARY
           echo "- **Environment:** Staging" >> $GITHUB_STEP_SUMMARY
           echo "- **URL:** https://verigraph-api-staging.fly.dev" >> $GITHUB_STEP_SUMMARY
           echo "- **Status:** ✅ Deployed & Tested" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "#### Models" >> $GITHUB_STEP_SUMMARY
-          echo "- **Status:** ✅ Promoted to Staging (with quality gates)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Model:** fact-checker-gan" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Next Steps:** Merge to main for Production deployment" >> $GITHUB_STEP_SUMMARY
