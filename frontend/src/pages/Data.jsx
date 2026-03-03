@@ -136,18 +136,6 @@ function Data() {
     })
   }, [])
 
-  const handleContextMenuSearch = useCallback(() => {
-    if (contextMenu?.node) {
-      const label = contextMenu.node.data.label
-      setGraphEntity(label)
-      setContextMenu(null)
-      // Trigger search
-      setTimeout(() => {
-        handleGraphSearch(null, label)
-      }, 100)
-    }
-  }, [contextMenu, handleGraphSearch])
-
   const handleGraphSearch = useCallback(async (e, entityOverride = null) => {
     if (e) e.preventDefault()
     const searchEntity = entityOverride || graphEntity
@@ -209,6 +197,18 @@ function Data() {
       setGraphLoading(false)
     }
   }, [API_URL, graphEntity, setNodes, setEdges])
+
+  const handleContextMenuSearch = useCallback(() => {
+    if (contextMenu?.node) {
+      const label = contextMenu.node.data.label
+      setGraphEntity(label)
+      setContextMenu(null)
+      // Trigger search
+      setTimeout(() => {
+        handleGraphSearch(null, label)
+      }, 100)
+    }
+  }, [contextMenu, handleGraphSearch])
 
   const getLabelColor = (label) => {
     switch (label?.toUpperCase()) {
