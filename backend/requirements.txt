@@ -15,4 +15,4 @@ dagshub==0.3.13
 
 # Testing
 pytest==8.0.0
-httpx==0.26.0
+httpx==0.23.3  # Compatible with dagshub 0.3.13 (requires ~=0.23.0)
