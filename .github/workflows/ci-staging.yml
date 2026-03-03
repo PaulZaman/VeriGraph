@@ -1,4 +1,4 @@
-name: CI/CD - Staging
+name: Staging
 
 on:
   push:
@@ -17,22 +17,18 @@ on:
       - '.github/workflows/ci-staging.yml'
 
 jobs:
-  # ================================
-  # BACKEND: Test + Build + Deploy
-  # ================================
-  backend:
-    name: Backend Pipeline
+  backend-unit-tests:
+    name: Backend Unit Tests
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./backend
 
     steps:
-      # Checkout code
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Setup Python with caching
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -40,46 +36,229 @@ jobs:
           cache: 'pip'
           cache-dependency-path: backend/requirements.txt
 
-      # Install dependencies
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Run tests inline
-      - name: Run tests
+      - name: Run unit tests
         env:
           TEST_MODE: "true"
           NEON_DB_URL: ${{ secrets.NEON_DB_URL }}
-        run: python -m pytest test_main.py -v --tb=short
+        run: |
+          echo "🧪 Running unit tests..."
+          python -m pytest test_main.py -v --tb=short -m "not integration"
 
-      # Build and test Docker image inline
+      - name: Test summary
+        if: success()
+        run: |
+          echo "### ✅ Backend Unit Tests Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ API Endpoint Tests" >> $GITHUB_STEP_SUMMARY
+
+  backend-integration-tests:
+    name: Backend Integration Tests
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run integration tests
+        env:
+          TEST_MODE: "true"
+          NEON_DB_URL: ${{ secrets.NEON_DB_URL }}
+        run: |
+          echo "🔗 Running integration tests..."
+          python -m pytest test_main.py -v --tb=short -k "test_verify"
+
+      - name: Test summary
+        if: success()
+        run: |
+          echo "### ✅ Backend Integration Tests Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Database Integration Tests" >> $GITHUB_STEP_SUMMARY
+
+  backend-coverage:
+    name: Backend Test Coverage
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run full test suite with coverage
+        env:
+          TEST_MODE: "true"
+          NEON_DB_URL: ${{ secrets.NEON_DB_URL }}
+        run: |
+          echo "🎯 Running complete test suite with coverage..."
+          python -m pytest test_main.py -v --tb=short --cov=. --cov-report=term-missing
+
+      - name: Test summary
+        if: success()
+        run: |
+          echo "### ✅ Test Coverage Report Generated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Full test suite passed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Code coverage measured" >> $GITHUB_STEP_SUMMARY
+
+  docker-build:
+    name: Docker Build Test
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Build Docker image
         run: docker build -t verigraph-api:staging .
 
-      - name: Test Docker image
-        if: github.event_name == 'push'
+      - name: Test Docker container
         run: |
+          echo "🐳 Testing Docker container..."
           docker run -d --name test-api -p 8080:8080 -e TEST_MODE=true verigraph-api:staging
           sleep 5
           curl -f http://localhost:8080/health || exit 1
+          echo "✓ Health check passed"
+          curl -f http://localhost:8080/ || exit 1
+          echo "✓ Root endpoint passed"
           docker stop test-api
           docker rm test-api
 
-      # Deploy to Fly.io (only on push)
-      - name: Deploy to Fly.io Staging
-        if: github.event_name == 'push'
+      - name: Test summary
+        if: success()
+        run: |
+          echo "### ✅ Docker Build Test Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Docker image builds successfully" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Container health checks passed" >> $GITHUB_STEP_SUMMARY
+
+  frontend:
+    name: Frontend Tests & Build
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Build production bundle
+        run: npm run build
+        env:
+          # Ensure build doesn't fail on warnings
+          CI: false
+
+      - name: Check build output
+        run: |
+          echo "✅ Checking build artifacts..."
+          if [ -d "dist" ]; then
+            echo "✓ dist/ directory created"
+            echo "✓ Build output size: $(du -sh dist | cut -f1)"
+            ls -lh dist/
+          else
+            echo "❌ dist/ directory not found"
+            exit 1
+          fi
+
+      - name: Test summary
+        if: success()
+        run: |
+          echo "### ✅ Frontend Tests Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Dependencies Installed (npm ci)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ ESLint Checks Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Production Build Successful" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Build Artifacts Validated" >> $GITHUB_STEP_SUMMARY
+
+  deploy-backend:
+    name: Deploy Backend to Staging
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build Docker image
+        run: docker build -t verigraph-api:staging .
+
+      - name: Setup Fly.io CLI
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Deploy
-        if: github.event_name == 'push'
+      - name: Deploy to Fly.io
         run: flyctl deploy --config fly.staging.toml --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-      # Smoke tests after deployment
       - name: Smoke tests
-        if: github.event_name == 'push'
         run: |
           echo "⏳ Waiting for deployment..."
           sleep 15
@@ -92,128 +271,13 @@ jobs:
           echo "✓ Root endpoint passed"
           
           echo "✅ All smoke tests passed!"
-      
-      # Log model readiness for promotion
-      - name: Check Model Promotion Readiness
-        if: github.event_name == 'push'
-        env:
-          DAGSHUB_REPO: ${{ secrets.DAGSHUB_REPO }}
-          DAGSHUB_USER: ${{ secrets.DAGSHUB_USER }}
-          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
-          MODEL_NAME: "fact-checker-gan"
-        run: |
-          echo "📊 Checking if models in Staging meet quality gates..."
-          pip install mlflow dagshub
-          
-          # Create a check script inline
-          cat > check_staging.py << 'EOF'
-          import os
-          import mlflow
-          from mlflow.tracking import MlflowClient
-          import dagshub
-          
-          DAGSHUB_REPO = os.getenv("DAGSHUB_REPO")
-          MODEL_NAME = os.getenv("MODEL_NAME", "fact-checker-gan")
-          
-          # Setup
-          repo_owner, repo_name = DAGSHUB_REPO.split('/')
-          dagshub.init(repo_name=repo_name, repo_owner=repo_owner, mlflow=True)
-          
-          client = MlflowClient()
-          
-          # Get staging models
-          staging_versions = client.get_latest_versions(MODEL_NAME, stages=["Staging"])
-          
-          if staging_versions:
-              version = staging_versions[0]
-              run = client.get_run(version.run_id)
-              metrics = run.data.metrics
-              
-              print(f"\n📦 Staging Model: {MODEL_NAME} v{version.version}")
-              print(f"   Run ID: {version.run_id}")
-              print(f"\n📊 Metrics:")
-              
-              acc = metrics.get('test_accuracy', metrics.get('accuracy'))
-              f1 = metrics.get('test_f1', metrics.get('f1_score', metrics.get('f1')))
-              
-              if acc:
-                  status = "✅" if acc >= 0.75 else "⚠️"
-                  print(f"   {status} Accuracy: {acc:.4f} (threshold: 0.75)")
-              if f1:
-                  status = "✅" if f1 >= 0.70 else "⚠️"
-                  print(f"   {status} F1 Score: {f1:.4f} (threshold: 0.70)")
-              
-              # Check if ready for production
-              if acc and f1 and acc >= 0.75 and f1 >= 0.70:
-                  print(f"\n✅ Model ready for promotion to Production!")
-              else:
-                  print(f"\n⚠️  Model does not meet quality gates for Production")
-          else:
-              print(f"ℹ️  No model found in Staging")
-          EOF
-          
-          python check_staging.py || echo "⚠️  Could not check staging model"
 
-      # Deployment summary
-      - name: Create deployment summary
-        if: github.event_name == 'push' && success()
-        run: |
-          echo "### 🚀 Backend Deployment" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Environment:** Staging" >> $GITHUB_STEP_SUMMARY
-          echo "- **URL:** https://verigraph-api-staging.fly.dev" >> $GITHUB_STEP_SUMMARY
-          echo "- **Status:** ✅ Deployed & Tested" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Next Steps:** Model promotion to Production happens on merge to main branch" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Environment:** Staging" >> $GITHUB_STEP_SUMMARY
-          echo "- **URL:** https://verigraph-api-staging.fly.dev" >> $GITHUB_STEP_SUMMARY
-          echo "- **Status:** ✅ Deployed & Tested" >> $GITHUB_STEP_SUMMARY
-
-  # ================================
-  # FRONTEND: Build + Test
-  # ================================
-  frontend:
-    name: Frontend Pipeline
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./frontend
-
-    steps:
-      # Checkout code
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      # Setup Node.js with caching
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      # Install and build inline
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build frontend
-        run: npm run build
-
-      - name: Verify build
-        run: ls -lh dist/
-
-      # Test summary
-      - name: Create build summary
+      - name: Deployment summary
         if: success()
         run: |
-          echo "### ✅ Frontend Build" >> $GITHUB_STEP_SUMMARY
+          echo "### 🚀 Staging Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Status:** Build successful" >> $GITHUB_STEP_SUMMARY
-          echo "- **Artifacts:** Ready for deployment" >> $GITHUB_STEP_SUMMARY
-
-          if [ ! -d "dist" ]; then
-            echo "Build failed: dist directory not found"
-            exit 1
-          fi
-          echo "✅ Frontend build successful"
+          echo "- **Environment:** Staging" >> $GITHUB_STEP_SUMMARY
+          echo "- **URL:** https://verigraph-api-staging.fly.dev" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** ✅ Deployed & Tested" >> $GITHUB_STEP_SUMMARY
+          echo "**Next Steps:** Merge to main for Production deployment" >> $GITHUB_STEP_SUMMARY

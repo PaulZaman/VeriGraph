@@ -92,7 +92,7 @@ function ResultCard({ result, claim }) {
   if (result.status === 'completed' && result.verdict) {
     const verdict = result.verdict
     const confidence = result.confidence || 0
-    const probabilities = result.probabilities || {}
+    const _probabilities = result.probabilities || {}
 
     return (
       <div className="max-w-4xl mx-auto mt-8">

@@ -5,11 +5,8 @@ import ResultCard from '../components/ResultCard'
 
 function Landing() {
   const [searchQuery, setSearchQuery] = useState('')
-  const [apiStatus, setApiStatus] = useState('')
-  const [apiConnected, setApiConnected] = useState(null)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
-  const [taskId, setTaskId] = useState(null)
   const pollingIntervalRef = useRef(null)
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -49,9 +46,7 @@ function Landing() {
   const handleSearch = async (e) => {
     e.preventDefault()
     setLoading(true)
-    setApiStatus('')
     setResult(null)
-    setTaskId(null)
     
     // Clear any existing polling
     if (pollingIntervalRef.current) {
@@ -69,15 +64,11 @@ function Landing() {
       })
       
       if (response.ok) {
-        setApiStatus('api connected')
-        setApiConnected(true)
         const data = await response.json()
         
         console.log('Task created:', data)
         
         if (data.task_id) {
-          setTaskId(data.task_id)
-          
           // Set result to pending state
           setResult({
             status: 'pending',
@@ -94,15 +85,11 @@ function Landing() {
           pollTaskStatus(data.task_id)
         }
       } else {
-        setApiStatus('api disconnected')
-        setApiConnected(false)
         setResult(null)
         setLoading(false)
       }
     } catch (error) {
       console.error('API Error:', error)
-      setApiStatus('api disconnected')
-      setApiConnected(false)
       setResult(null)
       setLoading(false)
     }
