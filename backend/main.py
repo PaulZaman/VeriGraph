@@ -92,6 +92,16 @@ async def root():
 async def health_check():
     return {"status": "healthy"}
 
+@app.get("/version")
+async def get_version():
+    """Return API version and environment information"""
+    return {
+        "api_version": "1.0.0",
+        "environment": os.getenv("ENVIRONMENT", "development"),
+        "model_stage": os.getenv("MODEL_STAGE", "Staging"),
+        "python_version": "3.11"
+    }
+
 @app.post("/verify")
 async def verify_claim(request: VerifyRequest):
     """Create a new verification task"""
