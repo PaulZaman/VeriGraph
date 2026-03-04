@@ -21,7 +21,7 @@ class MLflowService:
         self.dagshub_repo = os.getenv("DAGSHUB_REPO", "MarcoSrhl/NLP-Fact-checking")
         self.dagshub_user = os.getenv("DAGSHUB_USER", "MarcoSrhl")
         self.dagshub_token = os.getenv("DAGSHUB_TOKEN")
-        self.model_name = os.getenv("MODEL_NAME", "fact-checker-bert")
+        self.model_name = os.getenv("MODEL_NAME", "fact-checker-gan")
         self.model_stage = os.getenv("MODEL_STAGE", "Staging")
         self.client = None
         
@@ -53,7 +53,7 @@ class MLflowService:
         Get information about the current model based on MODEL_STAGE environment variable
         
         Returns:
-            Dict with model_id (run_id), version, stage, and model_name
+            Dict with model_id (the source training run_id), version, stage, and model_name
             None if not found or error
         """
         try:
@@ -77,8 +77,29 @@ class MLflowService:
             # Get the model version
             stage_version = stage_versions[0]
             
+            # Get the source run_id from the model version's run
+            # The model version run_id points to the packaging run, we need the training run
+            try:
+                run = self.client.get_run(stage_version.run_id)
+                
+                # Check for source_run_id in params first, then tags
+                source_run_id = None
+                if 'source_run_id' in run.data.params:
+                    source_run_id = run.data.params['source_run_id']
+                    logger.info(f"✓ Found source_run_id in params: {source_run_id[:8]}...")
+                elif 'source_run_id' in run.data.tags:
+                    source_run_id = run.data.tags['source_run_id']
+                    logger.info(f"✓ Found source_run_id in tags: {source_run_id[:8]}...")
+                else:
+                    # Fallback to the version's run_id if no source_run_id found
+                    source_run_id = stage_version.run_id
+                    logger.warning(f"No source_run_id found, using model version run_id")
+            except Exception as e:
+                logger.warning(f"Could not get run details: {e}, using version run_id")
+                source_run_id = stage_version.run_id
+            
             model_info = {
-                "model_id": stage_version.run_id,  # This is the MLflow run_id
+                "model_id": source_run_id,  # This is the training run_id (source_run_id)
                 "model_name": self.model_name,
                 "version": stage_version.version,
                 "stage": self.model_stage,
@@ -86,7 +107,7 @@ class MLflowService:
                 "description": stage_version.description
             }
             
-            logger.info(f"✓ Found model: v{model_info['version']} (run_id: {model_info['model_id'][:8]}...)")
+            logger.info(f"✓ Found model: v{model_info['version']} (training_run_id: {model_info['model_id'][:8]}...)")
             return model_info
             
         except Exception as e:
