@@ -149,14 +149,14 @@ function Landing() {
               <p className="text-center mb-8">
                 When you enter a claim, the system extracts key triplets (subject, relation, object) using spaCy, 
                 then runs them through a BERT-GAN discriminator trained to distinguish factual from fabricated statements. 
-                The model learned factual patterns from 1.5M DBpedia triplets and returns a verdict with confidence score — all in ~1.2 seconds.
+                The model learned factual patterns from 1.5M DBpedia triplets and returns a verdict with confidence score all in ~1.2 seconds.
               </p>
               
               <div className="grid md:grid-cols-3 gap-6 mt-8">
                 <div className="text-center p-6 bg-green-50 rounded-xl">
                   <CheckCircle className="w-12 h-12 mx-auto mb-3 text-green-600" />
                   <h4 className="font-bold text-green-800 mb-2">SUPPORTED</h4>
-                  <p className="text-sm text-gray-600">GAN score ≥ 0.7 — High confidence it's true</p>
+                  <p className="text-sm text-gray-600">GAN score ≥ 0.7  High confidence it's true</p>
                 </div>
                 <div className="text-center p-6 bg-red-50 rounded-xl">
                   <XCircle className="w-12 h-12 mx-auto mb-3 text-red-600" />
