@@ -1,82 +1,98 @@
-# VeriGraph
+# 🔍 VeriGraph
 
-A modern web application built with React, Tailwind CSS, and FastAPI.
+> **MLOps-driven fact-checking system** with automated model lifecycle management, multi-stage deployments, and distributed ML inference.
 
-## Project Structure
+An end-to-end production-ready application demonstrating core MLOps principles: version control, CI/CD pipelines, model registry, staged deployments, and monitoring.
+
+---
+
+## 🎯 MLOps Features Implemented
+
+✅ **Model Versioning & Registry** - DagHub/MLflow tracking with staging ↔ production promotions  
+✅ **Multi-Stage Deployments** - Separate staging and production environments  
+✅ **CI/CD Pipeline** - Automated testing, building, and deployment to Fly.io  
+✅ **Distributed Architecture** - Lightweight API layer + dedicated ML inference server  
+✅ **Quality Gates** - Model promotion with validation checks  
+✅ **Experiment Tracking** - Complete ML experiment logging and artifact management  
+
+---
+
+## 🏗️ Architecture
 
 ```
-verigraph/
-├── frontend/          # React + Tailwind CSS frontend
-│   ├── src/
-│   ├── public/
-│   └── package.json
-├── backend/           # FastAPI Python backend
-│   ├── main.py
-│   └── requirements.txt
-└── README.md
+┌──────────────┐      ┌──────────────┐      ┌──────────────┐
+│   Frontend   │─────▶│  FastAPI     │─────▶│  MacMini ML  │
+│  React/Vite  │      │  Backend     │      │  Server      │
+└──────────────┘      └──────┬───────┘      └──────────────┘
+                             │
+                      ┌──────▼───────┐
+                      │  PostgreSQL  │
+                      │  (Neon)      │
+                      └──────────────┘
 ```
 
-## Getting Started
+**3-Tier Design:**
+- **Frontend** - React + Tailwind CSS (Staging & Production)
+- **Backend** - FastAPI with SQLAlchemy (Lightweight API layer)
+- **ML Server** - Local MacMini M1 with GAN models (Cost-optimized inference)
 
-### Backend Setup
+---
 
-1. Navigate to the backend directory:
+## 🚀 Quick Start
+
+### Backend
 ```bash
 cd backend
-```
-
-2. Create and activate a virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install dependencies:
-```bash
+python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-```
-
-4. Run the FastAPI server:
-```bash
 uvicorn main:app --reload --port 8000
 ```
 
-The API will be available at http://localhost:8000
-API Documentation: http://localhost:8000/docs
-
-### Frontend Setup
-
-1. Navigate to the frontend directory:
+### Frontend
 ```bash
 cd frontend
+npm install && npm run dev
 ```
 
-2. Install dependencies (if not already done):
-```bash
-npm install
+**Endpoints:**
+- Frontend: `http://localhost:5173`
+- Backend API: `http://localhost:8000`
+- API Docs: `http://localhost:8000/docs`
+
+---
+
+## 📊 Model Lifecycle
+
+```
+Training → DagHub/MLflow → Staging → Quality Gate → Production
 ```
 
-3. Run the development server:
-```bash
-npm run dev
-```
+**Promotion Scripts:**
+- `backend/promote_model.py` - Promote models between stages
+- `backend/scripts/promote_with_quality_gate.py` - Quality-gated promotions
+- Model artifacts automatically synced to inference server
 
-The app will be available at http://localhost:5173
+---
 
-## Tech Stack
+## 🛠️ Tech Stack
 
-### Frontend
-- **React** - UI framework
-- **Vite** - Build tool and dev server
-- **Tailwind CSS** - Utility-first CSS framework
+| Layer | Technologies |
+|-------|-------------|
+| **Frontend** | React, Vite, Tailwind CSS |
+| **Backend** | FastAPI, SQLAlchemy, Pydantic |
+| **ML** | PyTorch, MLflow, DagHub |
+| **Database** | PostgreSQL (Neon) |
+| **Deploy** | Fly.io, Docker |
+| **CI/CD** | GitHub Actions |
 
-### Backend
-- **FastAPI** - Modern Python web framework
-- **Uvicorn** - ASGI server
-- **Pydantic** - Data validation
+---
 
-## Development
+## 📚 Documentation
 
-- Frontend dev server: http://localhost:5173
-- Backend API: http://localhost:8000
-- API Documentation: http://localhost:8000/docs
+- [CICD-ARCHITECTURE.md](CICD-ARCHITECTURE.md) - Complete CI/CD and architecture details
+- [backend/docs/](backend/docs/) - Model integration and production workflows
+- [backend/scripts/README.md](backend/scripts/README.md) - MLOps utility scripts
+
+---
+
+**Built for MLOps Course** - Demonstrating production-grade ML system design and deployment

@@ -2,18 +2,18 @@
 
 > **Complete guide to VeriGraph's automated testing, deployment, and ML model promotion workflows**
 
-## 📋 Table of Contents
-- [Quick Visual Overview](#-quick-visual-overview)
-- [Branch Strategy](#-branch-strategy)
-- [Workflow Overview](#-workflow-overview)
-- [Deployment Targets](#-deployment-targets)
-- [Detailed Workflow Breakdown](#-detailed-workflow-breakdown)
-- [Model Promotion](#-model-promotion)
-- [Best Practices](#-best-practices)
+## Table of Contents
+- [Quick Visual Overview](#quick-visual-overview)
+- [Branch Strategy](#branch-strategy)
+- [Workflow Overview](#workflow-overview)
+- [Deployment Targets](#deployment-targets)
+- [Detailed Workflow Breakdown](#detailed-workflow-breakdown)
+- [Model Promotion](#model-promotion)
+- [Best Practices](#best-practices)
 
 ---
 
-## 🎨 Quick Visual Overview
+## Quick Visual Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -23,7 +23,7 @@
 Feature Branch
      │
      │ PR → dev
-     ├──────────► [4 Parallel Test Jobs] ✅
+     ├──────────► [4 Parallel Test Jobs]
      │            • Backend Unit Tests
      │            • Backend Integration Tests
      │            • Docker Build Test
@@ -33,7 +33,7 @@ Feature Branch
    dev branch
      │
      │ PR → staging
-     ├──────────► [5 Parallel Validation Jobs] ✅
+     ├──────────► [5 Parallel Validation Jobs]
      │            • Backend Unit Tests
      │            • Backend Integration Tests
      │            • Backend Coverage
@@ -44,15 +44,16 @@ Feature Branch
  staging branch
      │
      │ PUSH (merge)
-     ├──────────► [Deployment Only] 🚀
+     ├──────────► [Deployment Only]
      │            • Build Docker Image
      │            • Deploy to Fly.io Staging
+     │            • URL: https://verigraph.pages.dev/
      │            • Smoke Tests
-     │            
-     │            🌐 https://verigraph-api-staging.fly.dev
+     │            • Frontend Deployement (configured in Cloudfare interface)
+     │            • URL: https://verigraph-api-staging.fly.dev
      │
      │ PR → main  
-     ├──────────► [5 Parallel Final Validation Jobs] ✅
+     ├──────────► [5 Parallel Final Validation Jobs]
      │            • Backend Unit Tests
      │            • Backend Integration Tests
      │            • Backend Coverage
@@ -63,14 +64,15 @@ Feature Branch
   main branch
      │
      │ PUSH (merge)
-     ├──────────► [Model Promotion + Deployment] 🚀
+     ├──────────► [Model Promotion + Deployment]
      │            • Promote Model: Staging → Production
      │            • Archive old Production models
      │            • Build Docker Image
      │            • Deploy to Fly.io Production
-     │            • Smoke Tests
-     │            
-     │            🌐 https://verigraph-api.fly.dev
+     │            • URL: https://verigraph-api.fly.dev
+     │            • Smoke 
+     │            • Frontend Deployement (configured in Cloudfare interface)
+     │            • URL: https://verigraph-8xr.pages.dev/
      │
      ▼
   PRODUCTION
@@ -78,7 +80,7 @@ Feature Branch
 
 ---
 
-## 🌳 Branch Strategy
+## Branch Strategy
 
 VeriGraph uses a **three-tier branch strategy** for progressive deployment:
 
@@ -100,29 +102,29 @@ main (production)
 
 ---
 
-## 🔄 Workflow Overview
+## Workflow Overview
 
 ### Summary Table
 
 | Event | Branch | Workflow File | Jobs | Deploy | Model Promotion |
 |-------|--------|---------------|------|--------|-----------------|
-| **PR → dev** | `dev` | `test.yml` | 4 parallel test jobs | ❌ | ❌ |
-| **PR → staging** | `staging` | `ci-staging.yml` | 5 parallel validation jobs | ❌ | ❌ |
-| **Push to staging** | `staging` | `ci-staging.yml` | Deployment job only | ✅ Staging | ❌ |
-| **PR → main** | `main` | `ci-production.yml` | 5 parallel final validation jobs | ❌ | ❌ |
-| **Push to main** | `main` | `ci-production.yml` | Model promotion + Deploy | ✅ Production | ✅ Staging→Production |
+| **PR → dev** | `dev` | `test.yml` | 4 parallel test jobs | No | No |
+| **PR → staging** | `staging` | `ci-staging.yml` | 5 parallel validation jobs | No | No |
+| **Push to staging** | `staging` | `ci-staging.yml` | Deployment job only | Yes (Staging) | No |
+| **PR → main** | `main` | `ci-production.yml` | 5 parallel final validation jobs | No | No |
+| **Push to main** | `main` | `ci-production.yml` | Model promotion + Deploy | Yes (Production) | Yes (Staging→Production) |
 
 ### Key Principles
 
-✅ **Tests run in PRs** - Comprehensive validation before merge  
-✅ **Deployments run on push** - After merge, code already validated  
-✅ **No redundant tests** - Tests validated in PR don't re-run on push  
-✅ **Parallel jobs** - Fast feedback with job separation  
-✅ **Clear failure points** - Identify exactly which job failed  
+- **Tests run in PRs** - Comprehensive validation before merge  
+- **Deployments run on push** - After merge, code already validated  
+- **No redundant tests** - Tests validated in PR don't re-run on push  
+- **Parallel jobs** - Fast feedback with job separation  
+- **Clear failure points** - Identify exactly which job failed  
 
 ---
 
-## 🌐 Deployment Targets
+## Deployment Targets
 
 | Environment | URL | Branch | Fly.io App |
 |-------------|-----|--------|------------|
@@ -131,9 +133,15 @@ main (production)
 
 ---
 
-## 📖 Detailed Workflow Breakdown
+## Deployment
 
-### 1️⃣ Pull Request to `dev` Branch
+![Deployment Workflow](image.png)
+
+---
+
+## Detailed Workflow Breakdown
+
+### 1. Pull Request to `dev` Branch
 
 **Workflow:** `.github/workflows/test.yml`  
 **Name:** `Dev Tests`
@@ -152,30 +160,30 @@ on:
 **Jobs (4 parallel):**
 
 1. **backend-unit-tests**
-   - ✅ Python 3.11 setup
-   - ✅ Install dependencies
-   - ✅ Run unit tests (`pytest -m "not integration"`)
+   - Python 3.11 setup
+   - Install dependencies
+   - Run unit tests (`pytest -m "not integration"`)
    
 2. **backend-integration-tests**
-   - ✅ Python 3.11 setup
-   - ✅ Install dependencies
-   - ✅ Run integration tests (`pytest -k "test_verify"`)
+   - Python 3.11 setup
+   - Install dependencies
+   - Run integration tests (`pytest -k "test_verify"`)
 
 3. **docker-build**
-   - ✅ Build Docker image
-   - ✅ Test container health
-   - ✅ Verify health endpoint
+   - Build Docker image
+   - Test container health
+   - Verify health endpoint
 
 4. **frontend**
-   - ✅ Node.js 20 setup
-   - ✅ Install dependencies (npm ci)
-   - ✅ Build production bundle
+   - Node.js 20 setup
+   - Install dependencies (npm ci)
+   - Build production bundle
 
 **Purpose:** Fast feedback for developers. Parallel execution means failure is instantly visible by job name.
 
 ---
 
-### 2️⃣ Pull Request to `staging` Branch
+### 2. Pull Request to `staging` Branch
 
 **Workflow:** `.github/workflows/ci-staging.yml`  
 **Name:** `Staging`
@@ -195,33 +203,33 @@ on:
 **Jobs (5 parallel):**
 
 1. **backend-unit-tests**
-   - ✅ Run unit tests with detailed output
+   - Run unit tests with detailed output
 
 2. **backend-integration-tests**
-   - ✅ Run integration tests
-   - ✅ Database integration validation
+   - Run integration tests
+   - Database integration validation
 
 3. **backend-coverage**
-   - ✅ Full test suite with coverage report
-   - ✅ Coverage analysis (`pytest --cov`)
+   - Full test suite with coverage report
+   - Coverage analysis (`pytest --cov`)
 
 4. **docker-build**
-   - ✅ Build Docker image (`verigraph-api:staging`)
-   - ✅ Start test container
-   - ✅ Health check + root endpoint validation
-   - ✅ Stop and cleanup
+   - Build Docker image (`verigraph-api:staging`)
+   - Start test container
+   - Health check + root endpoint validation
+   - Stop and cleanup
 
 5. **frontend**
-   - ✅ Install dependencies
-   - ✅ **Run ESLint** (code quality)
-   - ✅ Build production bundle
-   - ✅ Verify build artifacts
+   - Install dependencies
+   - **Run ESLint** (code quality)
+   - Build production bundle
+   - Verify build artifacts
 
 **Purpose:** Comprehensive validation before merging to staging. All tests from dev plus coverage and linting.
 
 ---
 
-### 3️⃣ Push to `staging` Branch (After Merge)
+### 3. Push to `staging` Branch (After Merge)
 
 **Workflow:** `.github/workflows/ci-staging.yml`  
 **Name:** `Staging`
@@ -237,10 +245,10 @@ on:
 **Job:**
 
 **deploy-backend**
-1. ✅ Build Docker image
-2. ✅ Setup Fly.io CLI
-3. 🚀 **Deploy to Fly.io** (`fly.staging.toml`)
-4. ✅ **Smoke tests** (15s wait + endpoint checks)
+1. Build Docker image
+2. Setup Fly.io CLI
+3. **Deploy to Fly.io** (`fly.staging.toml`)
+4. **Smoke tests** (15s wait + endpoint checks)
 
 **Why no tests?**  
 Tests already validated in PR. Push only deploys pre-validated code.
@@ -252,7 +260,7 @@ Models promoted manually to Staging stage in MLflow UI. Automatic promotion happ
 
 ---
 
-### 4️⃣ Pull Request to `main` Branch
+### 4. Pull Request to `main` Branch
 
 **Workflow:** `.github/workflows/ci-production.yml`  
 **Name:** `Production`
@@ -271,17 +279,17 @@ on:
 
 **Jobs (5 parallel):**
 
-1. **backend-unit-tests** ✅ Final unit test validation
-2. **backend-integration-tests** ✅ Final integration test validation
-3. **backend-coverage** ✅ Final coverage check
-4. **docker-build** ✅ Final Docker build + health check
-5. **frontend** ✅ Final ESLint + build validation
+1. **backend-unit-tests** - Final unit test validation
+2. **backend-integration-tests** - Final integration test validation
+3. **backend-coverage** - Final coverage check
+4. **docker-build** - Final Docker build + health check
+5. **frontend** - Final ESLint + build validation
 
 **Purpose:** **Final comprehensive checkpoint** before production. Same jobs as staging PR to ensure nothing broke.
 
 ---
 
-### 5️⃣ Push to `main` Branch (After Merge) - **PRODUCTION DEPLOYMENT**
+### 5. Push to `main` Branch (After Merge) - **PRODUCTION DEPLOYMENT**
 
 **Workflow:** `.github/workflows/ci-production.yml`  
 **Name:** `Production`
@@ -301,12 +309,12 @@ on:
 Purpose: Promote validated Staging model to Production
 
 **Steps:**
-1. ✅ Connect to MLflow (DagHub)
-2. ✅ Get current Staging model for `fact-checker-gan`
-3. ✅ Retrieve model metrics (accuracy, F1)
-4. ✅ Archive old Production models
-5. ✅ Promote Staging → Production
-6. ✅ Summary report
+1. Connect to MLflow (DagHub)
+2. Get current Staging model for `fact-checker-gan`
+3. Retrieve model metrics (accuracy, F1)
+4. Archive old Production models
+5. Promote Staging → Production
+6. Summary report
 
 **Model:** `fact-checker-gan` (BERT-GAN Discriminator)
 
@@ -331,21 +339,21 @@ client.transition_model_version_stage(staging_model.version, stage="Production")
 Purpose: Deploy backend to production
 
 **Steps:**
-1. ✅ Build Docker image (`verigraph-api:production`)
-2. ✅ Setup Fly.io CLI
-3. 🚀 **Deploy to Fly.io** (`fly.toml`)
-4. ✅ **Smoke tests** (15s wait + endpoint checks)
+1. Build Docker image (`verigraph-api:production`)
+2. Setup Fly.io CLI
+3. **Deploy to Fly.io** (`fly.toml`)
+4. **Smoke tests** (15s wait + endpoint checks)
    - Health check: `/health`
    - Root endpoint: `/`
 
 **Result:**
-- ✅ Model promoted to Production
-- ✅ Backend deployed to production
-- ✅ Production environment validated
+- Model promoted to Production
+- Backend deployed to production
+- Production environment validated
 
 ---
 
-## 🤖 Model Promotion
+## Model Promotion
 
 ### Model Lifecycle
 
@@ -408,7 +416,7 @@ Purpose: Deploy backend to production
 
 ---
 
-## 🔐 Required Secrets
+## Required Secrets
 
 Configure these in GitHub repository settings → Secrets and variables → Actions:
 
@@ -422,7 +430,7 @@ Configure these in GitHub repository settings → Secrets and variables → Acti
 
 ---
 
-## 🛠️ Local Testing
+## Local Testing
 
 ### Test Backend Locally
 
@@ -494,7 +502,7 @@ This script will:
 
 ---
 
-## 🎯 Best Practices
+## Best Practices
 
 ### Development Workflow
 
@@ -554,15 +562,15 @@ git checkout dev
 
 ### Before Merging to main:
 
-✅ **All tests pass on staging**  
-✅ **Staging deployment successful**  
-✅ **Model validated in Staging stage** (MLflow UI)  
-✅ **QA testing completed on staging**  
-✅ **No breaking changes**  
+- **All tests pass on staging**  
+- **Staging deployment successful**  
+- **Model validated in Staging stage** (MLflow UI)  
+- **QA testing completed on staging**  
+- **No breaking changes**  
 
 ---
 
-## 🔍 Monitoring & Debugging
+## Monitoring & Debugging
 
 ### Check Deployment Status
 
@@ -597,7 +605,7 @@ curl https://verigraph-api.fly.dev/health
 
 ---
 
-## ⚡ Quick Reference Guide
+## Quick Reference Guide
 
 ### Common  Scenarios
 
@@ -648,143 +656,6 @@ pytest test_main.py -v --cov=. --cov-report=term-missing
 # 5. CI re-runs automatically
 ```
 
----
-
-## 🚨 Troubleshooting
-
-### Issue: "ESLint errors in CI but not locally"
-
-**Example:**
-```
-Error: 'variable' is assigned a value but never used
-```
-
-**Solutions:**
-1. Run ESLint locally: `cd frontend && npm run lint`
-2. Prefix unused variables with underscore: `_variable`
-3. Or remove unused variables
-
-### Issue: "Docker build fails in CI"
-
-**Check:**
-1. Dockerfile syntax correct
-2. All dependencies in requirements.txt
-3. No hardcoded paths
-4. Test locally: `docker build -t test .`
-
-### Issue: "Model promotion failed"
-
-**Possible causes:**
-1. No Staging model exists → Manually promote to Staging in MLflow UI
-2. DagHub secrets not configured → Check GitHub Secrets
-3. Network issues → Re-run CI workflow
-
-### Issue: "Deployment succeeded but app not responding"
-
-**Check:**
-1. Fly.io token valid: `flyctl auth token`
-2. App exists: `flyctl apps list`
-3. App logs: `flyctl logs -a verigraph-api-staging`
-4. App status: `flyctl status -a verigraph-api-staging`
-
-### Issue: "Frontend build fails - process.cwd() error"
-
-**Solution:**
-Add ESLint disable comment in `vite.config.js`:
-```javascript
-export default defineConfig({
-  base: process.cwd().includes('frontend') ? '/' : '/frontend/', // eslint-disable-line
-})
-```
-
----
-
-## 📊 Workflow Comparison
-
-### Job Parallelization Benefits
-
-**Before (Monolithic):**
-```
-Single backend job: 5-10 minutes
-├─ Install deps (1 min)
-├─ Run tests (3 min)
-├─ Build Docker (4 min)
-└─ Deploy (2 min)
-
-❌ Failure at minute 8 → Hard to identify what failed
-❌ Must wait for full sequence
-```
-
-**After (Parallel):**
-```
-5 parallel jobs: 3-4 minutes
-├─ backend-unit-tests (2 min) ✅
-├─ backend-integration-tests (2 min) ✅  
-├─ backend-coverage (3 min) ✅
-├─ docker-build (4 min) ✅
-└─ frontend (3 min) ✅
-
-✅ Failure immediately visible by job name
-✅ Faster total time (parallel execution)
-✅ Clear separation of concerns
-```
-
-### Test Optimization
-
-**Before:**
-- Tests run on every PR AND every push
-- Redundant test execution
-- Slow deployments (tests + deploy)
-
-**After:**
-- Tests run only on PRs (comprehensive validation)
-- Push only deploys (fast, tests already validated)
-- No redundant executions
-
----
-
-## 📞 Support & Maintenance
-
-### For CI/CD issues:
-1. ✅ Check workflow logs in GitHub Actions
-2. ✅ Verify secrets configured correctly
-3. ✅ Test locally first (see Local Testing section)
-4. ✅ Check Fly.io app status and logs
-
-### For model promotion issues:
-1. ✅ Verify model exists in Staging stage (MLflow UI)
-2. ✅ Check DagHub secrets (DAGSHUB_REPO, DAGSHUB_USER, DAGSHUB_TOKEN)
-3. ✅ Test promotion locally with `test_promotion_local.py`
-4. ✅ Review model metrics in DagHub
-
-### Updating This Documentation
-
-When making CI/CD changes:
-1. ✅ Update this README
-2. ✅ Test changes in feature branch
-3. ✅ Document new workflows or jobs
-4. ✅ Update workflow diagrams if structure changes
-
----
-
-## 📈 Recent Changes
-
-**March 3, 2026:**
-- ✅ Restructured all workflows with parallel jobs
-- ✅ Separated tests (PRs) from deployments (push)
-- ✅ Removed redundant test executions on push
-- ✅ Simplified model promotion (Staging → Production only)
-- ✅ Removed `fact-checker-bert` from CI/CD
-- ✅ Added comprehensive ESLint checks to frontend
-- ✅ Added pytest coverage reporting
-
-**Benefits:**
-- ⚡ Faster CI execution (parallel jobs)
-- 🎯 Clear failure identification (job names)
-- 🚀 Faster deployments (no redundant tests)
-- 📊 Better visibility (separate jobs vs monolithic)
-
----
 
 **Last Updated:** March 3, 2026  
 **Maintained By:** VeriGraph Team
